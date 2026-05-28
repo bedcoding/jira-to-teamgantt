@@ -26,7 +26,8 @@ function readUrlIds() {
   };
 }
 
-// 현재 viewport 에 마운트된 task 행만 파싱. virtualized 라서 화면 밖 행은 잡히지 않음.
+// 현재 viewport 에 마운트된 task 행만 파싱. virtualized 라서 화면 밖 행은 datepicker 가 마운트되지 않아
+// 날짜 input 을 못 찾는다(=null). 그 경우에도 task 자체는 저장하되 source: "dom" 으로 표시한다.
 function collectTasksFromDom() {
   const rows = document.querySelectorAll('[data-testid^="row-task-"]');
   const tasks = [];
@@ -42,8 +43,9 @@ function collectTasksFromDom() {
     const start = dateInputs[0]?.value || null;
     const end   = dateInputs[1]?.value || null;
 
-    const progressInput = row.querySelector(".task-progress-label");
-    const progress = progressInput?.value ?? null;
+    const progressRaw = row.querySelector(".task-progress-label")?.value;
+    const progressNum = progressRaw ? Number(String(progressRaw).replace("%", "").trim()) : NaN;
+    const progress = Number.isFinite(progressNum) ? progressNum : null;
 
     const assigneeEls = row.querySelectorAll('.project-task-other-resources [role="label"]');
     const assignees = [...assigneeEls].map((el) => ({
@@ -51,7 +53,7 @@ function collectTasksFromDom() {
       name: el.getAttribute("title") ?? el.textContent?.trim() ?? "",
     }));
 
-    tasks.push({ id, rawTitle, start, end, progress, assignees });
+    tasks.push({ id, rawTitle, start, end, progress, assignees, source: "dom" });
   }
   return tasks;
 }

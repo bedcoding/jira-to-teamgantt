@@ -7,6 +7,8 @@ import { renderPager } from "./pager.js";
 
 let tgPage = 1;
 
+const DATE_MISSING_TIP = "※ DOM으로 추출한 경우 TeamGantt는 보이는 행만 날짜를 그리므로 화면에 보이지 않는 행은 날짜 정보가 빠집니다.";
+
 function $(id) { return document.getElementById(id); }
 
 function dedupe(items) {
@@ -121,7 +123,7 @@ async function handleCollectTgFetch() {
   const normalized = normalizeTgFromFetch(entry.data, {
     prefixRegex: s.prefixRegex,
     myTgId: s.tgMyId,
-  });
+  }).map((t) => ({ ...t, source: "api" }));
   if (normalized.length === 0) {
     showSnackbar(`정규화 결과 0건. (캡처 ${ageMin}분 전, payload가 비었거나 myTgId 불일치)`,
       { kind: "error", duration: 6000 });
@@ -177,7 +179,8 @@ async function handleCollectTgDom() {
 
   const prefix = myName ? `[${myName}] ` : "";
   const ok = confirm(
-    `${prefix}${tasks.length}건을 저장합니다.${warn}`
+    `${prefix}${tasks.length}건을 저장합니다.${warn}\n\n`
+    + DATE_MISSING_TIP
   );
   if (!ok) return;
 
@@ -192,6 +195,7 @@ async function handleCollectTgDom() {
     progress: t.progress,
     assignees: t.assignees,
     projectId: projectId ? Number(projectId) : null,
+    source: "dom",
   }));
 
   const result = await upsertTgTasks(normalized);
@@ -214,9 +218,23 @@ async function renderTgTable() {
     const tr = document.createElement("tr");
     const tdK = document.createElement("td"); tdK.textContent = it.jiraKey ?? "";
     const tdN = document.createElement("td"); tdN.textContent = it.rawTitle ?? "";
-    const tdS = document.createElement("td"); tdS.textContent = it.start ?? "";
-    const tdE = document.createElement("td"); tdE.textContent = it.end ?? "";
-    const tdP = document.createElement("td"); tdP.textContent = it.progress != null ? `${it.progress}%` : "";
+    const tdS = document.createElement("td");
+    const tdE = document.createElement("td");
+    const showWarn = it.source === "dom" && !it.start && !it.end;
+    if (showWarn) {
+      for (const td of [tdS, tdE]) {
+        td.textContent = "⚠️";
+        td.classList.add("tip");
+        td.setAttribute("data-tip", DATE_MISSING_TIP);
+      }
+    } else {
+      tdS.textContent = it.start ?? "";
+      tdE.textContent = it.end ?? "";
+    }
+    const tdP = document.createElement("td");
+    // 옛 데이터엔 "100%" 문자열, 새 데이터엔 100 숫자. 중복 % 방지.
+    const progressStr = it.progress != null ? String(it.progress).replace(/%$/, "") + "%" : "";
+    tdP.textContent = progressStr;
     tr.append(tdK, tdN, tdS, tdE, tdP);
     tbody.appendChild(tr);
   }
