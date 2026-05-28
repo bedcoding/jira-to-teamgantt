@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Jira ↔ TeamGantt 1:1 비교",
+  "version": "0.1.0",
+  "description": "Jira 와 TeamGantt 의 내 작업을 좌우로 나열해 누락을 시각화합니다.",
+  "permissions": ["storage", "unlimitedStorage", "tabs", "activeTab", "scripting", "downloads"],
+  "host_permissions": [
+    "https://*.atlassian.net/*",
+    "https://app.teamgantt.com/*",
+    "https://api.teamgantt.com/*"
+  ],
+  "action": {
+    "default_title": "Jira ↔ TeamGantt",
+    "default_popup": "popup/popup.html"
+  },
+  "background": {
+    "service_worker": "background/service_worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.atlassian.net/issues*"],
+      "js": ["content/jira.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://app.teamgantt.com/projects/*"],
+      "js": ["content/teamgantt-fetch-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://app.teamgantt.com/projects/*"],
+      "js": ["content/teamgantt-bridge.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

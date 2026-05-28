@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Jira ↔ TeamGantt</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="jira">지라</button>
+    <button class="tab-btn" data-tab="tg">간트</button>
+    <button class="tab-btn" data-tab="compare">비교</button>
+    <button class="tab-btn" data-tab="report">추출</button>
+    <div class="tabs-tools">
+      <button id="btn-global-backup-save" class="icon-btn" data-tip="현재 데이터 백업">💾</button>
+      <button id="btn-global-backup-load" class="icon-btn" data-tip="백업 파일 불러오기">📂</button>
+      <input type="file" id="global-backup-file" accept="application/json" hidden />
+    </div>
+  </nav>
+
+  <!-- ────────── 지라 ────────── -->
+  <section class="tab-panel active" data-tab="jira">
+    <div class="filter-card">
+      <div class="form-grid">
+        <label for="jira-domain">경로</label>
+        <input type="text" id="jira-domain" placeholder="atlassian.net" />
+
+        <label>기간</label>
+        <div class="row">
+          <input type="date" id="jira-date-start" class="date-input" />
+          <span class="range-sep">~</span>
+          <input type="date" id="jira-date-end" class="date-input" />
+          <div class="seg range-nav" data-scope="jira">
+            <button data-step="prev"></button>
+            <button data-step="this"></button>
+            <button data-step="next"></button>
+          </div>
+          <div class="range-more">
+            <button class="range-more-btn">단위 ▾</button>
+            <div class="range-more-menu range-unit-menu" data-scope="jira">
+              <button data-unit="day">일</button>
+              <button data-unit="week">주</button>
+              <button data-unit="month">월</button>
+              <button data-unit="quarter">분기</button>
+              <button data-unit="year">년</button>
+            </div>
+          </div>
+        </div>
+
+        <label for="jira-jql">JQL</label>
+        <input type="text" id="jira-jql" />
+
+        <label for="jira-final-url">최종</label>
+        <div class="url-wrap" data-tip="클릭해서 새 탭으로 이동">
+          <input type="text" id="jira-final-url" readonly />
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-collect-jira" class="primary">Jira 수집</button>
+        <button id="btn-clear-jira" class="danger">전체 삭제</button>
+        <span id="jira-status" class="status inline"></span>
+      </div>
+    </div>
+
+    <div class="table-toolbar">
+      <label>페이지당
+        <select id="jira-page-size">
+          <option value="50">50</option>
+          <option value="100" selected>100</option>
+          <option value="200">200</option>
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+          <option value="0">전체</option>
+        </select>
+      </label>
+      <div class="pager" id="jira-pager"></div>
+    </div>
+
+    <table id="jira-table">
+      <thead>
+        <tr>
+          <th>키</th>
+          <th>제목</th>
+          <th>상태</th>
+          <th>담당</th>
+          <th>업데이트</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- ────────── 간트 ────────── -->
+  <section class="tab-panel" data-tab="tg">
+    <div class="filter-card">
+      <div class="form-grid">
+        <label for="tg-project-id">프로젝트</label>
+        <div class="row">
+          <select id="tg-project-id" class="grow">
+            <option value="">(목록에서 선택)</option>
+          </select>
+          <button id="btn-open-project-mgr" class="icon-btn" data-tip="프로젝트 목록 관리">⚙️</button>
+        </div>
+
+        <label for="tg-my-id">사용자</label>
+        <div class="row">
+          <select id="tg-my-id" class="grow">
+            <option value="">(목록에서 선택)</option>
+          </select>
+          <button id="btn-open-person-mgr" class="icon-btn" data-tip="사용자 목록 관리">⚙️</button>
+        </div>
+
+        <label for="tg-final-url">최종</label>
+        <div class="url-wrap" data-tip="클릭해서 새 탭으로 이동">
+          <input type="text" id="tg-final-url" readonly />
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-collect-tg-fetch" class="primary">TeamGantt 수집 (API)</button>
+        <button id="btn-collect-tg-dom">TeamGantt 수집 (DOM)</button>
+        <button id="btn-clear-tg" class="danger">전체 삭제</button>
+        <span id="tg-status" class="status inline"></span>
+      </div>
+    </div>
+
+    <div class="table-toolbar">
+      <label>페이지당
+        <select id="tg-page-size">
+          <option value="50">50</option>
+          <option value="100" selected>100</option>
+          <option value="200">200</option>
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+          <option value="0">전체</option>
+        </select>
+      </label>
+      <div class="pager" id="tg-pager"></div>
+    </div>
+
+    <table id="tg-table">
+      <thead>
+        <tr>
+          <th>키</th>
+          <th>제목</th>
+          <th>시작</th>
+          <th>종료</th>
+          <th>진행</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- ────────── 비교 ────────── -->
+  <section class="tab-panel" data-tab="compare">
+    <div class="filter-card">
+      <div class="form-grid">
+        <label for="compare-search">검색</label>
+        <div class="row">
+          <input type="search" id="compare-search" class="grow" placeholder="키/제목 검색" />
+          <button id="btn-open-prefix-mgr" class="icon-btn" data-tip="키 추출 규칙(정규식)">⚙️</button>
+        </div>
+
+        <label for="compare-date-source">날짜</label>
+        <select id="compare-date-source">
+          <option value="jiraUpdated">Jira 업데이트</option>
+          <option value="jiraDue">Jira 마감일</option>
+          <option value="tgStart">TeamGantt 시작일</option>
+          <option value="tgEnd">TeamGantt 종료일</option>
+        </select>
+      </div>
+
+      <div class="card-actions">
+        <span id="compare-status" class="status inline"></span>
+      </div>
+    </div>
+
+    <table id="compare-table">
+      <thead>
+        <tr>
+          <th>키</th>
+          <th>Jira 제목</th>
+          <th>TeamGantt 제목</th>
+          <th id="compare-date-col">날짜</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="filter-card">
+      <div class="card-title">데이터 관리</div>
+      <div class="card-actions" style="border-top: none; padding-top: 0; margin-top: 0;">
+        <button id="btn-backup-save">백업 저장</button>
+        <button id="btn-backup-load">백업 복원</button>
+        <button id="btn-clear-all" class="danger">전체 삭제</button>
+        <input type="file" id="backup-file" accept="application/json" hidden />
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────── 추출 ────────── -->
+  <section class="tab-panel" data-tab="report">
+    <div class="filter-card">
+      <div class="form-grid">
+        <label>소스</label>
+        <div class="row">
+          <label class="inline-radio"><input type="radio" name="report-source" value="jira" /> Jira</label>
+          <label class="inline-radio"><input type="radio" name="report-source" value="tg" /> TeamGantt</label>
+        </div>
+
+        <label>기간</label>
+        <div class="row">
+          <input type="date" id="report-start" class="date-input" />
+          <span class="range-sep">~</span>
+          <input type="date" id="report-end" class="date-input" />
+          <div class="seg range-nav" data-scope="report">
+            <button data-step="prev"></button>
+            <button data-step="this"></button>
+            <button data-step="next"></button>
+          </div>
+          <div class="range-more">
+            <button class="range-more-btn">단위 ▾</button>
+            <div class="range-more-menu range-unit-menu" data-scope="report">
+              <button data-unit="day">일</button>
+              <button data-unit="week">주</button>
+              <button data-unit="month">월</button>
+              <button data-unit="quarter">분기</button>
+              <button data-unit="year">년</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-report-copy" class="primary">복사</button>
+        <span id="report-count" class="status inline"></span>
+      </div>
+    </div>
+
+    <textarea id="report-output" readonly rows="14"></textarea>
+  </section>
+
+  <!-- 사용자 목록 관리 모달 -->
+  <div id="person-mgr-dialog" class="bp-backdrop hidden">
+    <div class="bp-dialog" role="dialog" aria-modal="true">
+      <div class="bp-header">
+        <span>사용자 목록 관리</span>
+        <button class="bp-close" aria-label="닫기" data-close="person-mgr-dialog">×</button>
+      </div>
+      <div class="bp-body">
+        <details class="preset-help">
+          <summary>ID 얻는 법 (개발자용)</summary>
+          <div class="preset-help-body">
+            <ol>
+              <li>TeamGantt에서 아무 프로젝트 진입 후 상단 탭 중 <b>People</b> 클릭</li>
+              <li>Chrome <b>개발자도구 (⌥⌘I)</b> → <b>Network</b> 패널 열고 필터에 <code>v1/</code> 입력</li>
+              <li>People 페이지를 한 번 <b>새로고침</b> → 아래 요청이 잡힘</li>
+              <li><code>Response</code> 탭의 JSON 전체 복사</li>
+              <li>아래 textarea에 붙여넣고 <b>병합 적용</b></li>
+            </ol>
+            <div class="preset-help-apis">
+              <div><code>GET https://api.teamgantt.com/v1/companies/{companyId}/resources/company</code></div>
+            </div>
+            <div class="preset-help-note">응답 통째로 붙여도 <code>id</code> / <code>name</code> 필드만 추출됩니다.</div>
+          </div>
+        </details>
+
+        <div class="preset-list" id="people-list"></div>
+        <div class="toolbar">
+          <input type="text" id="person-add-id" placeholder="123456" style="width:90px" />
+          <input type="text" id="person-add-name" placeholder="홍길동" style="flex:1" />
+          <button id="btn-person-add">+ 추가</button>
+        </div>
+        <label>JSON 붙여넣기
+          <textarea id="person-json" rows="3" placeholder='[{"id": 123456, "name": "Web - 홍길동"}, {"id": 123457, "name": "Web - 김철수"}]'></textarea>
+        </label>
+        <div class="toolbar">
+          <button id="btn-person-json-merge">병합 적용</button>
+          <button id="btn-person-json-replace">덮어쓰기 적용</button>
+          <button id="btn-person-clear" class="danger">전체 삭제</button>
+        </div>
+      </div>
+      <div class="bp-footer">
+        <button class="bp-cancel" data-close="person-mgr-dialog">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 프로젝트 목록 관리 모달 -->
+  <div id="project-mgr-dialog" class="bp-backdrop hidden">
+    <div class="bp-dialog" role="dialog" aria-modal="true">
+      <div class="bp-header">
+        <span>프로젝트 목록 관리</span>
+        <button class="bp-close" aria-label="닫기" data-close="project-mgr-dialog">×</button>
+      </div>
+      <div class="bp-body">
+        <details class="preset-help">
+          <summary>ID 얻는 법 (개발자용)</summary>
+          <div class="preset-help-body">
+            <ol>
+              <li>TeamGantt에서 아무 프로젝트 진입</li>
+              <li>Chrome <b>개발자도구 (⌥⌘I)</b> → <b>Network</b> 패널 열고 필터에 <code>v1/</code> 입력</li>
+              <li>페이지 새로고침 → 아래 요청이 잡힘</li>
+              <li><code>Response</code> 탭의 JSON 전체 복사</li>
+              <li>아래 textarea에 붙여넣고 <b>병합 적용</b></li>
+            </ol>
+            <div class="preset-help-apis">
+              <div><code>GET https://api.teamgantt.com/v1/projects/all?fields[]=id&amp;fields[]=name&amp;status=active</code></div>
+            </div>
+            <div class="preset-help-note">응답 통째로 붙여도 <code>id</code> / <code>name</code> 필드만 추출됩니다.</div>
+          </div>
+        </details>
+
+        <div class="preset-list" id="projects-list"></div>
+        <div class="toolbar">
+          <input type="text" id="project-add-id" placeholder="1234567" style="width:90px" />
+          <input type="text" id="project-add-name" placeholder="예시프로젝트" style="flex:1" />
+          <button id="btn-project-add">+ 추가</button>
+        </div>
+        <label>JSON 붙여넣기
+          <textarea id="project-json" rows="3" placeholder='[{"id": 1234567, "name": "2026-예시프로젝트"}, {"id": 1234568, "name": "2026-예시프로젝트-Archive"}]'></textarea>
+        </label>
+        <div class="toolbar">
+          <button id="btn-project-json-merge">병합 적용</button>
+          <button id="btn-project-json-replace">덮어쓰기 적용</button>
+          <button id="btn-project-clear" class="danger">전체 삭제</button>
+        </div>
+      </div>
+      <div class="bp-footer">
+        <button class="bp-cancel" data-close="project-mgr-dialog">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 키 추출 규칙(정규식) 모달 -->
+  <div id="prefix-mgr-dialog" class="bp-backdrop hidden">
+    <div class="bp-dialog" role="dialog" aria-modal="true">
+      <div class="bp-header">
+        <span>키 추출 규칙</span>
+        <button class="bp-close" aria-label="닫기" data-close="prefix-mgr-dialog">×</button>
+      </div>
+      <div class="bp-body">
+        <details class="preset-help" open>
+          <summary>이게 뭔가요?</summary>
+          <div class="preset-help-body">
+            <p class="intro">
+              TeamGantt 작업 제목에서 <b>Jira 키</b>(예: <code>DEV-46625</code>)를 찾아내는 규칙입니다. <br />
+              같은 키를 가진 Jira 이슈와 짝지어 비교 탭에 보여주려면 키를 정확히 잘라낼 수 있어야 해요.
+            </p>
+            <div class="match-box ok">
+              <div class="match-box-title">인식되는 형식</div>
+              <ul>
+                <li><code>[DEV-46625] 업무 제목</code> — 대괄호로 감싼 경우</li>
+                <li><code>DEV-46625 업무 제목</code> — 키 뒤에 공백</li>
+              </ul>
+            </div>
+            <div class="match-box ng">
+              <div class="match-box-title">인식 안 되는 형식</div>
+              <ul>
+                <li><code>DEV-46625업무</code> — 키 뒤에 공백 없이 글자가 붙은 경우</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+
+        <label for="prefix-regex">정규식</label>
+        <input type="text" id="prefix-regex" placeholder="(?:^|\s|\[)([A-Z]+-\d+)(?:\]|\s|$)" />
+      </div>
+      <div class="bp-footer">
+        <button class="bp-cancel" data-close="prefix-mgr-dialog">닫기</button>
+        <button id="btn-prefix-save" class="primary">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="backup-dialog" class="bp-backdrop hidden">
+    <div class="bp-dialog" role="dialog" aria-modal="true" aria-labelledby="bp-title">
+      <div class="bp-header">
+        <span id="bp-title">백업 복원 미리보기</span>
+        <button class="bp-close" aria-label="닫기">×</button>
+      </div>
+      <div class="bp-body"></div>
+      <div class="bp-footer">
+        <button class="bp-cancel">취소</button>
+        <button class="bp-confirm primary">복원하기</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="snackbar" class="snackbar hidden">
+    <span class="snackbar-msg"></span>
+    <button class="snackbar-action hidden"></button>
+    <button class="snackbar-close" aria-label="닫기">×</button>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
