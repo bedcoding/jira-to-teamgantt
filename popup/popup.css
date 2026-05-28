@@ -159,6 +159,15 @@ body {
   font-size: 12px;
   background: #fff;
 }
+.form-grid > select,
+.form-grid .row > select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
 .form-grid > input:focus,
 .form-grid > select:focus,
 .form-grid .row input:focus,
@@ -347,6 +356,36 @@ body {
 .status.inline {
   margin: 0 0 0 4px;
 }
+
+/* 비교 탭 상태 칩 */
+#compare-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+#compare-status .stat-total {
+  color: #555;
+  font-size: 11px;
+  margin-right: 4px;
+}
+#compare-status .stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  border: 1px solid transparent;
+  cursor: help;
+}
+#compare-status .stat-chip-count {
+  font-weight: 700;
+}
+#compare-status .stat-chip.matched   { background: #e8f5e9; color: #2e7d32; border-color: #c8e6c9; }
+#compare-status .stat-chip.jira-only { background: #e3f2fd; color: #1565c0; border-color: #bbdefb; }
+#compare-status .stat-chip.tg-key    { background: #fff3e0; color: #ef6c00; border-color: #ffe0b2; }
+#compare-status .stat-chip.tg-nokey  { background: #fafafa; color: #757575; border-color: #e0e0e0; }
 
 .toolbar {
   display: flex;
@@ -563,13 +602,18 @@ h3 {
 #compare-table th:nth-child(1), #compare-table td:nth-child(1) { width: 100px; }
 #compare-table th:nth-child(4), #compare-table td:nth-child(4) { width: 110px; }
 
-#compare-table tbody:empty::after {
-  content: "수집된 데이터가 없습니다. [Jira 수집] / [TeamGantt 수집] 버튼을 눌러 시작하세요.";
-  display: block;
+.empty-note {
+  display: none;
   text-align: center;
-  padding: 20px;
+  padding: 24px 16px;
   color: #999;
+  background: #fff;
+  border: 1px solid #d8dce1;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  margin-top: -1px;
 }
+#compare-table:has(tbody:empty) + .empty-note { display: block; }
 
 h4 {
   margin: 10px 0 4px;
@@ -632,6 +676,15 @@ h4 {
 .match-box ul {
   margin: 0;
   padding-left: 18px;
+}
+.match-box .hint {
+  display: block;
+  color: #8a8f96;
+  font-size: 11px;
+  margin-left: 4px;
+}
+.match-box .hint::before {
+  content: "└ ";
 }
 
 .preset-help-apis {

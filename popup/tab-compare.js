@@ -1,8 +1,7 @@
 import {
-  getAll, getSettings, setSettings, clearAll,
+  getAll, getSettings, setSettings,
 } from "../lib/storage.js";
 import { showSnackbar } from "./snackbar.js";
-import { saveBackup, loadBackup } from "./backup.js";
 
 function $(id) { return document.getElementById(id); }
 
@@ -152,9 +151,21 @@ async function renderCompare() {
   const jiraOnly  = rows.filter((r) => r.kind === "jira-only").length;
   const orphanK   = rows.filter((r) => r.kind === "tg-orphan-with-key").length;
   const orphanNK  = rows.filter((r) => r.kind === "tg-orphan-no-key").length;
-  $("compare-status").textContent =
-    `Jira ${Object.keys(jiraIssues).length}건 / TeamGantt ${Object.keys(tgTasks).length}건 ·` +
-    ` 매칭 ${matched} / Jira만 ${jiraOnly} / TeamGantt 고아(키있음) ${orphanK} / TeamGantt 고아(키없음) ${orphanNK}`;
+  const jiraTotal = Object.keys(jiraIssues).length;
+  const tgTotal   = Object.keys(tgTasks).length;
+
+  const chip = (kind, label, count, tip) =>
+    `<span class="stat-chip ${kind}" title="${tip}">`
+    + `<span class="stat-chip-label">${label}</span>`
+    + `<span class="stat-chip-count">${count}</span>`
+    + `</span>`;
+
+  $("compare-status").innerHTML =
+    `<span class="stat-total">Jira ${jiraTotal} · TeamGantt ${tgTotal}</span>`
+    + chip("matched",   "매칭",                     matched,  "양쪽에 모두 있고 키가 일치")
+    + chip("jira-only", "Jira만",                   jiraOnly, "Jira 에는 있는데 TeamGantt 작업이 없음")
+    + chip("tg-key",    "TeamGantt만 (키 있음)",    orphanK,  "TeamGantt 제목에 Jira 키가 박혀 있지만 매칭되는 Jira 이슈가 없음 — 오타 또는 JQL 필터에서 빠진 이슈")
+    + chip("tg-nokey",  "TeamGantt만 (키 없음)",    orphanNK, "TeamGantt 제목에 Jira 키 자체가 없음 — 비교 불가");
 }
 
 function openDialog(id) { document.getElementById(id).classList.remove("hidden"); }
@@ -166,13 +177,6 @@ function wireDialogClose(id) {
     b.addEventListener("click", () => closeDialog(id))
   );
   dlg.addEventListener("click", (e) => { if (e.target === dlg) closeDialog(id); });
-}
-
-async function handleClearAll() {
-  if (!confirm("저장된 Jira/TeamGantt/설정/목록 모두 삭제됩니다. 진행할까요?")) return;
-  await clearAll();
-  showSnackbar("전체 삭제 완료.", { kind: "ok" });
-  await renderCompare();
 }
 
 export async function initCompareTab() {
@@ -198,14 +202,6 @@ export async function initCompareTab() {
     await setSettings({ compareDateSource: $("compare-date-source").value });
     renderCompare();
   });
-
-  $("btn-backup-save").addEventListener("click", saveBackup);
-  $("btn-backup-load").addEventListener("click", () => $("backup-file").click());
-  $("backup-file").addEventListener("change", async (e) => {
-    await loadBackup(e.target.files[0], renderCompare);
-    e.target.value = "";
-  });
-  $("btn-clear-all").addEventListener("click", handleClearAll);
 
   await renderCompare();
 }

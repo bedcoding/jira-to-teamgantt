@@ -135,6 +135,73 @@ async function handleCollectTgFetch() {
   await renderTgTable();
 }
 
+async function handleCollectTgDom() {
+  const s = await getSettings();
+  const [tab] = await chrome.tabs.query({ url: "https://app.teamgantt.com/projects/*", active: true, currentWindow: true })
+    .then((arr) => arr.length ? arr : chrome.tabs.query({ url: "https://app.teamgantt.com/projects/*" }));
+  if (!tab) {
+    showSnackbar("TeamGantt 프로젝트 페이지가 열려있지 않습니다. List 뷰를 먼저 여세요.", {
+      kind: "error", actionLabel: "TeamGantt 열기", onAction: handleOpenTg, duration: 8000,
+    });
+    return;
+  }
+
+  let resp;
+  try {
+    resp = await chrome.tabs.sendMessage(tab.id, { type: "COLLECT_TG_DOM" });
+  } catch (e) {
+    showSnackbar("페이지와 확장 프로그램의 연결이 끊어졌습니다. TeamGantt 페이지를 새로고침 해주세요.",
+      { kind: "error", duration: 5000 });
+    return;
+  }
+  if (!resp?.ok) {
+    showSnackbar(`수집 실패: ${resp?.error ?? "unknown"}`, { kind: "error" });
+    return;
+  }
+
+  const { tasks, projectId, filteredPersonIds } = resp.data;
+  if (tasks.length === 0) {
+    showSnackbar("화면에 보이는 task 행이 0건입니다. List 뷰가 떠 있고 행이 보이는지 확인하세요.",
+      { kind: "error", duration: 6000 });
+    return;
+  }
+
+  const myId = String(s.tgMyId ?? "");
+  const myName = (s.tgPeople ?? []).find((p) => String(p.id) === myId)?.name;
+  const mismatch = myId && filteredPersonIds.length && !filteredPersonIds.includes(myId);
+  const warn = mismatch
+    ? `\n⚠ TeamGantt 필터(${filteredPersonIds.join(", ")})와 본인 ID(${myId})가 다릅니다.`
+    : !myId
+      ? `\n⚠ 본인 ID 미설정.`
+      : "";
+
+  const prefix = myName ? `[${myName}] ` : "";
+  const ok = confirm(
+    `${prefix}${tasks.length}건을 저장합니다.${warn}`
+  );
+  if (!ok) return;
+
+  // 정규식으로 jiraKey 추출 + projectId 부여
+  const re = s.prefixRegex ? new RegExp(s.prefixRegex) : null;
+  const normalized = tasks.map((t) => ({
+    id: t.id,
+    rawTitle: t.rawTitle,
+    jiraKey: re ? (t.rawTitle.match(re)?.[1] ?? null) : null,
+    start: t.start ? t.start.replaceAll("/", "-") : null,
+    end:   t.end   ? t.end.replaceAll("/", "-")   : null,
+    progress: t.progress,
+    assignees: t.assignees,
+    projectId: projectId ? Number(projectId) : null,
+  }));
+
+  const result = await upsertTgTasks(normalized);
+  showSnackbar(
+    `TeamGantt 수집(DOM): 신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped} · 누적 ${result.total} (이번 ${tasks.length}건)`,
+    { kind: "ok", duration: 5000 }
+  );
+  await renderTgTable();
+}
+
 async function renderTgTable() {
   const { tgTasks, settings } = await getAll();
   const tbody = document.querySelector("#tg-table tbody");
@@ -295,9 +362,7 @@ export async function initTgTab() {
   });
 
   $("btn-collect-tg-fetch").addEventListener("click", handleCollectTgFetch);
-  $("btn-collect-tg-dom").addEventListener("click", () => {
-    showSnackbar("TeamGantt DOM 수집은 다음 라운드에서 구현됩니다.", { kind: "info" });
-  });
+  $("btn-collect-tg-dom").addEventListener("click", handleCollectTgDom);
 
   $("tg-page-size").value = String(s.tgPageSize ?? 100);
   $("tg-page-size").addEventListener("change", async () => {

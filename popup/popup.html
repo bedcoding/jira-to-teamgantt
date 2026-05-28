@@ -188,16 +188,10 @@
       </thead>
       <tbody></tbody>
     </table>
-
-    <div class="filter-card">
-      <div class="card-title">데이터 관리</div>
-      <div class="card-actions" style="border-top: none; padding-top: 0; margin-top: 0;">
-        <button id="btn-backup-save">백업 저장</button>
-        <button id="btn-backup-load">백업 복원</button>
-        <button id="btn-clear-all" class="danger">전체 삭제</button>
-        <input type="file" id="backup-file" accept="application/json" hidden />
-      </div>
+    <div id="compare-empty" class="empty-note">
+      수집된 데이터가 없습니다. [Jira 수집] / [TeamGantt 수집] 버튼을 눌러 시작하세요.
     </div>
+
   </section>
 
   <!-- ────────── 추출 ────────── -->
@@ -352,14 +346,14 @@
             <div class="match-box ok">
               <div class="match-box-title">인식되는 형식</div>
               <ul>
-                <li><code>[DEV-46625] 업무 제목</code> — 대괄호로 감싼 경우</li>
-                <li><code>DEV-46625 업무 제목</code> — 키 뒤에 공백</li>
+                <li><code>[DEV-46625] 업무 제목</code> <span class="hint">대괄호로 감싼 경우</span></li>
+                <li><code>DEV-46625 업무 제목</code> <span class="hint">키 뒤에 공백</span></li>
               </ul>
             </div>
             <div class="match-box ng">
               <div class="match-box-title">인식 안 되는 형식</div>
               <ul>
-                <li><code>DEV-46625업무</code> — 키 뒤에 공백 없이 글자가 붙은 경우</li>
+                <li><code>DEV-46625업무</code> <span class="hint">키 뒤에 공백 없이 글자가 붙은 경우</span></li>
               </ul>
             </div>
           </div>
