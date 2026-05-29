@@ -36,7 +36,7 @@
             <button data-step="next"></button>
           </div>
           <div class="range-more">
-            <button class="range-more-btn">단위 ▾</button>
+            <button class="range-more-btn" data-tip="단위"><span class="range-more-label">단위 </span>▾</button>
             <div class="range-more-menu range-unit-menu" data-scope="jira">
               <button data-unit="day">일</button>
               <button data-unit="week">주</button>
@@ -172,7 +172,7 @@
         </select>
 
         <label>화면에 보이는 상태</label>
-        <div id="include-status-chips" class="status-chips" data-tip="선택한 상태만 표에 보이고 동기화에도 포함됩니다. 비어 있으면 모든 상태 표시."></div>
+        <div id="include-status-chips" class="status-chips"></div>
       </div>
 
       <div class="card-actions">
@@ -180,15 +180,24 @@
       </div>
 
       <div id="sync-bar" class="sync-bar hidden">
-        <button id="btn-sync-start" class="primary">동기화 시작</button>
-        <button id="btn-sync-stop" class="danger hidden">중지</button>
-        <button id="btn-sync-detect" class="ghost" data-tip="현재 TeamGantt 페이지에서 task 입력창을 selector 가 잡는지 확인">입력창 감지 테스트</button>
-        <span id="sync-info" class="status inline"></span>
-        <div id="sync-next" class="sync-next hidden">
-          <span class="sync-next-label">다음:</span>
-          <span id="sync-next-text"></span>
+        <div class="sync-card sync-card-actions">
+          <button id="btn-sync-start" class="primary">동기화 시작</button>
+          <button id="btn-sync-stop" class="hidden" data-tip="단축키 동작만 멈춤 (📋 작업 기록: 유지)">중지</button>
+          <button id="btn-sync-clear" class="danger hidden" data-tip="(📋 작업 기록: 삭제)">기록 전체 삭제</button>
+          <button id="btn-sync-detect" class="ghost" data-tip="현재 TeamGantt 페이지에서 task 입력창 존재여부 확인">입력창 감지 테스트</button>
         </div>
-        <div id="sync-help" class="sync-help">?</div>
+        <div id="sync-status-card" class="sync-card sync-card-status hidden">
+          <div class="sync-status-head">
+            <span id="sync-info" class="status inline"></span>
+            <div class="sync-progress">
+              <div id="sync-progress-fill" class="sync-progress-fill"></div>
+            </div>
+          </div>
+          <div id="sync-next" class="sync-next hidden">
+            <span class="sync-next-label">다음:</span>
+            <span id="sync-next-text"></span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -231,7 +240,7 @@
             <button data-step="next"></button>
           </div>
           <div class="range-more">
-            <button class="range-more-btn">단위 ▾</button>
+            <button class="range-more-btn" data-tip="단위"><span class="range-more-label">단위 </span>▾</button>
             <div class="range-more-menu range-unit-menu" data-scope="report">
               <button data-unit="day">일</button>
               <button data-unit="week">주</button>
@@ -249,7 +258,7 @@
       </div>
     </div>
 
-    <textarea id="report-output" readonly rows="14"></textarea>
+    <textarea id="report-output" readonly></textarea>
   </section>
 
   <!-- 사용자 목록 관리 모달 -->
@@ -344,7 +353,7 @@
     </div>
   </div>
 
-  <!-- 키 추출 규칙(정규식) 모달 -->
+  <!-- 키 추출 규칙 모달 -->
   <div id="prefix-mgr-dialog" class="bp-backdrop hidden">
     <div class="bp-dialog" role="dialog" aria-modal="true">
       <div class="bp-header">

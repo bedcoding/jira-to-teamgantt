@@ -57,9 +57,9 @@ function classifyRows(jiraByKey, tgByKey, tgWithoutKey) {
 // 전체 표 재렌더 시 발생하는 깜빡임/스크롤 튐을 피하려고 td 단위로 그린다.
 function renderTgCellForJiraOnly(tdT, r, confirmed) {
   if (confirmed) {
-    tdT.innerHTML = `<button class="sync-mark sync-mark-confirmed" title="이름/날짜 보정까지 완료 — 클릭해서 해제">✅ 보정 완료</button>`;
+    tdT.innerHTML = `<button class="sync-mark sync-mark-confirmed" data-tip="이름/날짜 보정까지 완료 — 클릭해서 해제">✅ 보정 완료</button>`;
   } else {
-    tdT.innerHTML = `<button class="sync-mark sync-mark-done" title="TeamGantt 에 등록됨 — 클릭해서 보정 완료로 표시">✓ 등록 완료</button>`;
+    tdT.innerHTML = `<button class="sync-mark sync-mark-done" data-tip="TeamGantt 에 등록됨 — 클릭해서 보정 완료로 표시">✓ 등록 완료</button>`;
   }
   tdT.querySelector("button").addEventListener("click", async () => {
     const q = await getSyncQueue();
@@ -104,7 +104,7 @@ function cssEscape(s) {
 }
 
 function renderTgCellPending(tdT, r) {
-  tdT.innerHTML = `<span class="sync-pending-mark" title="입력창에 박힘 — Enter 로 저장 후 다음 단축키">📋 입력됨</span> <button class="sync-pending-cancel" data-tip="입력만 하고 등록 안 한 경우 — 이 표시를 해제">×</button>`;
+  tdT.innerHTML = `<span class="sync-pending-mark" data-tip="입력창에 박힘 — Enter 로 저장 후 다음 단축키">📋 입력됨</span> <button class="sync-pending-cancel" data-tip="입력만 하고 등록 안 한 경우 — 이 표시를 해제">×</button>`;
   tdT.querySelector(".sync-pending-cancel").addEventListener("click", async () => {
     const q = await getSyncQueue();
     if (q.pendingKey === r.key) {
@@ -135,7 +135,7 @@ function renderRow(r, dateSource, doneKeys, pendingKey, confirmedKeys) {
   tdKey.textContent = r.key ?? "";
   if (r.key && r.jira) {
     tdKey.classList.add("clickable");
-    tdKey.title = "클릭: 새 탭에서 Jira 이슈 열기";
+    tdKey.setAttribute("data-tip", "클릭: 새 탭에서 Jira 이슈 열기");
     tdKey.addEventListener("click", async () => {
       const s = await getSettings();
       chrome.tabs.create({ url: `https://${s.jiraDomain}/browse/${r.key}` });
@@ -145,7 +145,7 @@ function renderRow(r, dateSource, doneKeys, pendingKey, confirmedKeys) {
   if (r.jira) {
     tdJ.textContent = r.jira.summary ?? "";
     tdJ.classList.add("clickable");
-    tdJ.title = "클릭: [KEY] summary 형식으로 클립보드 복사";
+    tdJ.setAttribute("data-tip", "클릭: [KEY] summary 형식으로 클립보드 복사");
     tdJ.addEventListener("click", () => {
       const txt = `[${r.jira.key}] ${r.jira.summary ?? ""}`;
       navigator.clipboard.writeText(txt);
@@ -158,7 +158,7 @@ function renderRow(r, dateSource, doneKeys, pendingKey, confirmedKeys) {
   if (r.tg) {
     tdT.textContent = r.tg.rawTitle ?? "";
     tdT.classList.add("clickable");
-    tdT.title = "클릭: 제목 클립보드 복사";
+    tdT.setAttribute("data-tip", "클릭: 제목 클립보드 복사");
     tdT.addEventListener("click", () => {
       navigator.clipboard.writeText(r.tg.rawTitle ?? "");
       showSnackbar(`복사: ${r.tg.rawTitle}`, { kind: "ok", duration: 2000 });
@@ -256,18 +256,17 @@ async function renderCompare() {
   const jiraTotal = Object.keys(jiraIssues).length;
   const tgTotal   = Object.keys(tgTasks).length;
 
-  const chip = (kind, label, count, tip) =>
-    `<span class="stat-chip ${kind}" title="${tip}">`
+  const chip = (kind, label, count) =>
+    `<span class="stat-chip ${kind}">`
     + `<span class="stat-chip-label">${label}</span>`
     + `<span class="stat-chip-count">${count}</span>`
     + `</span>`;
 
   $("compare-status").innerHTML =
     `<span class="stat-total">Jira ${jiraTotal} · TeamGantt ${tgTotal}</span>`
-    + chip("matched",   "매칭",                     matched,  "양쪽에 모두 있고 키가 일치")
-    + chip("jira-only", "Jira만",                   jiraOnly, "Jira 에는 있는데 TeamGantt 작업이 없음")
-    + chip("tg-key",    "TeamGantt만 (키 있음)",    orphanK,  "TeamGantt 제목에 Jira 키가 박혀 있지만 매칭되는 Jira 이슈가 없음 — 오타 또는 JQL 필터에서 빠진 이슈")
-    + chip("tg-nokey",  "TeamGantt만 (키 없음)",    orphanNK, "TeamGantt 제목에 Jira 키 자체가 없음 — 비교 불가");
+    + chip("matched",   "매칭",        matched)
+    + chip("jira-only", "Jira만",      jiraOnly)
+    + chip("tg-only",   "TeamGantt만", orphanK + orphanNK);
 
   // 'Jira만' 행이 있으면 동기화 바 노출.
   const syncBar = $("sync-bar");
@@ -319,13 +318,27 @@ async function refreshSyncUi() {
   const info = $("sync-info");
   const startBtn = $("btn-sync-start");
   const stopBtn  = $("btn-sync-stop");
+  const clearBtn = $("btn-sync-clear");
   const next     = $("sync-next");
   const nextText = $("sync-next-text");
+  const statusLine = $("sync-status-card");
+  const progressFill = $("sync-progress-fill");
 
   const remaining = q.items.length;
   const done = q.doneKeys.length;
-
   const pendingCount = q.pendingKey ? 1 : 0;
+  const confirmed = q.confirmedKeys?.length ?? 0;
+  const total = done + remaining + pendingCount;
+
+  // 기록이 하나라도 있으면 [기록 전체 삭제] 노출.
+  const hasHistory = done > 0 || pendingCount > 0 || confirmed > 0;
+  clearBtn.classList.toggle("hidden", !hasHistory);
+
+  const setProgress = (cur, tot) => {
+    const pct = tot > 0 ? Math.min(100, Math.round((cur / tot) * 100)) : 0;
+    progressFill.style.width = pct + "%";
+    progressFill.classList.toggle("complete", tot > 0 && cur >= tot);
+  };
 
   if (remaining === 0 && done === 0 && pendingCount === 0) {
     info.textContent = "";
@@ -333,31 +346,40 @@ async function refreshSyncUi() {
     startBtn.classList.remove("hidden");
     stopBtn.classList.add("hidden");
     next.classList.add("hidden");
+    statusLine.classList.add("hidden");
+    setProgress(0, 0);
     return;
   }
+  statusLine.classList.remove("hidden");
   if (remaining === 0 && pendingCount === 0) {
     info.textContent = `완료 ${done}건`;
     startBtn.textContent = "다시 시작";
     startBtn.classList.remove("hidden");
     stopBtn.classList.add("hidden");
     next.classList.add("hidden");
+    setProgress(done, done);
     return;
   }
   if (remaining === 0 && pendingCount === 1) {
     // 마지막 항목이 pending — '저장 완료' 명시적 확정 필요.
-    info.textContent = `진행 ${done} · 마지막 항목 입력됨 (Enter 후 [완료] 버튼)`;
+    info.textContent = `진행 ${done} / ${total} · 마지막 항목 입력됨 (Enter 후 [완료] 버튼)`;
     startBtn.textContent = "완료";
     startBtn.classList.remove("hidden");
-    stopBtn.classList.remove("hidden");
+    stopBtn.classList.add("hidden"); // 시작/중지/완료 중 한 개만.
     next.classList.add("hidden");
+    setProgress(done, total);
     return;
   }
-  info.textContent = `진행 ${done} / ${done + remaining + pendingCount}`;
+  info.textContent = `진행 ${done} / ${total}`;
   startBtn.classList.add("hidden");
   stopBtn.classList.remove("hidden");
   next.classList.remove("hidden");
-  nextText.textContent = q.items[0].text;
+  nextText.textContent = `${q.items[0].text}  →  ${HOTKEY_HINT}`;
+  setProgress(done, total);
 }
+
+// 단축키 라벨은 chrome.commands 가 등록한 실제 값. 초기 로드 시 한 번 채움.
+let HOTKEY_HINT = "단축키";
 
 async function startSync() {
   // '완료' 버튼 역할: 마지막 pending 을 done 으로 승격 + 큐 종료.
@@ -392,7 +414,10 @@ async function startSync() {
   await setSyncQueue({ items, pendingKey: null, doneKeys: [], confirmedKeys: [] });
   await refreshSyncUi();
   const hk = await getHotkeyLabel();
-  showSnackbar(`동기화 시작 (${items.length}건). TeamGantt 에서 [추가] 누르고 ${hk} 를 눌러주세요.`, { kind: "ok", duration: 3500 });
+  showSnackbar(
+    `동기화 시작 (${items.length}건).\nTeamGantt 페이지에서 [추가] 버튼을 누른 뒤 ${hk} 를 누르면 다음 작업이 입력됩니다.`,
+    { kind: "ok", duration: 5000 },
+  );
 }
 
 // chrome.commands 에서 현재 등록된 단축키를 읽어 표시용 문자열로 변환.
@@ -458,9 +483,29 @@ function humanizeContentError(e) {
 }
 
 async function stopSync() {
+  // 단축키 동작만 멈춤. items 만 비우고 doneKeys/confirmedKeys/pendingKey 는 유지.
+  // 진행 기록(✓ 등록 완료 / ✅ 보정 완료 / 📋 입력됨) 은 사용자가 [기록 전체 삭제] 를 누르기 전까지 보존.
+  const q = await getSyncQueue();
+  q.items = [];
+  await setSyncQueue(q);
+  await refreshSyncUi();
+  showSnackbar("단축키 동작을 중지했습니다. 표시된 기록은 그대로 유지됩니다.", { kind: "ok", duration: 3000 });
+  await renderCompare();
+}
+
+async function clearSyncHistory() {
+  const q = await getSyncQueue();
+  const total = (q.doneKeys?.length ?? 0) + (q.confirmedKeys?.length ?? 0) + (q.pendingKey ? 1 : 0);
+  if (total === 0) {
+    await clearSyncQueue();
+    await refreshSyncUi();
+    await renderCompare();
+    return;
+  }
+  if (!confirm(`동기화 기록 ${total}건이 모두 사라집니다. 진행하시겠습니까?`)) return;
   await clearSyncQueue();
   await refreshSyncUi();
-  showSnackbar("동기화 중지됨.", { kind: "warn" });
+  showSnackbar("동기화 기록을 삭제했습니다.", { kind: "warn" });
   await renderCompare();
 }
 
@@ -501,6 +546,7 @@ export async function initCompareTab() {
 
   $("btn-sync-start").addEventListener("click", startSync);
   $("btn-sync-stop").addEventListener("click", stopSync);
+  $("btn-sync-clear").addEventListener("click", clearSyncHistory);
   $("btn-sync-detect").addEventListener("click", detectTaskInput);
   wireDialogClose("detect-result-dialog");
 
@@ -532,9 +578,10 @@ export async function initCompareTab() {
   });
 
   const hk = await getHotkeyLabel();
-  $("sync-help").setAttribute(
+  HOTKEY_HINT = hk;
+  $("btn-sync-start").setAttribute(
     "data-tip",
-    `TeamGantt 탭에서 [추가] 버튼을 눌러 입력창을 띄운 뒤, ${hk} 를 누르면 다음 작업이 자동으로 입력됩니다. 잘못 입력된 작업은 TeamGantt 에서 직접 지우세요.`,
+    `Jira 에는 있고 TeamGantt 에는 없는 작업들을 TeamGantt 에 한 건씩 자동 입력합니다.\n\n사용법:\n1. [동기화 시작] 클릭\n2. TeamGantt 페이지에서 [추가] 버튼으로 입력창 띄우기\n3. ${hk} 누르면 다음 작업이 자동으로 입력창에 박힘\n4. Enter 로 저장 → 다시 ${hk}`,
   );
 
   // background 가 주입 결과 알려주면 UI 갱신.

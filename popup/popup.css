@@ -1,14 +1,18 @@
 * { box-sizing: border-box; }
 
+html, body { height: 100%; }
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", sans-serif;
   font-size: 12px;
   margin: 0;
   padding: 0;
-  min-width: 780px;
+  min-width: 560px;
   background: #eef1f4;
   color: #222;
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .tabs {
@@ -45,51 +49,59 @@ body {
   border-color: #e1e3e6;
 }
 
-.icon-btn[data-tip]::after {
+/* ── 전역 커스텀 툴팁 ─────────────────────────────────
+   data-tip 이 박혀 있는 모든 요소에 즉시 뜨는 다크 툴팁을 붙인다.
+   기본 title 툴팁(약 0.5~1초 지연) 대신 일관된 즉시 반응을 제공한다.
+   ※ data-tip="" (빈 문자열) 은 표시하지 않는다. */
+[data-tip]:not([data-tip=""]) {
+  position: relative;
+}
+[data-tip]:not([data-tip=""])::after {
   content: attr(data-tip);
   position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  bottom: calc(100% + 6px);
+  /* 좌측 정렬: 트리거 요소의 좌측 끝부터 펼쳐져 좁은 패널에서도 잘리지 않음.
+     너무 좁은 트리거(아이콘 등) 인 경우 ::after 가 부모보다 넓어지면서
+     화면 우측을 침범하지 않게 max-width 로 제한. */
+  left: 0;
   background: #2b2b2b;
   color: #eee;
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 11px;
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 100ms ease;
-  z-index: 30;
-}
-
-.icon-btn[data-tip]:hover::after { opacity: 1; }
-
-/* td 셀 안에서 즉시 뜨는 툴팁 */
-td.tip {
-  position: relative;
-  cursor: help;
-}
-td.tip::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: #2b2b2b;
-  color: #eee;
-  padding: 6px 10px;
-  border-radius: 4px;
-  font-size: 11px;
   line-height: 1.4;
-  width: 200px;
-  white-space: normal;
+  width: max-content;
+  max-width: min(280px, 90vw);
+  white-space: pre-line;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
   text-align: left;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 100ms ease;
-  z-index: 30;
+  transition: opacity 100ms ease 0ms;
+  z-index: 50;
 }
-td.tip:hover::after { opacity: 1; }
+/* 우측 끝에 있는 요소 — 툴팁이 좌측 방향으로 펼쳐져 화면 우측을 침범하지 않도록.
+   form-grid 내 우측 끝 settings 버튼(⚙️) 등. */
+.row > .icon-btn[data-tip]:not([data-tip=""]):last-child::after {
+  left: auto;
+  right: 0;
+}
+
+/* tabs-tools(💾/📂) — 패널 천장이라 위로 펼칠 공간이 없음. 아래로 + 우측 정렬. */
+.tabs-tools [data-tip]:not([data-tip=""])::after {
+  bottom: auto;
+  top: calc(100% + 6px);
+  left: auto;
+  right: 0;
+}
+[data-tip]:not([data-tip=""]):hover::after,
+[data-tip]:not([data-tip=""]):focus-visible::after {
+  opacity: 1;
+}
+
+/* td.tip — 커서만 도움말 모양으로. 툴팁 본체는 전역 [data-tip] 규칙이 처리. */
+td.tip { cursor: help; }
 
 .tab-btn {
   position: relative;
@@ -151,6 +163,14 @@ td.tip:hover::after { opacity: 1; }
 }
 
 .tab-panel.active { display: block; }
+
+/* 추출 탭은 남는 세로 공간을 모두 차지해서 textarea 가 늘어날 수 있게 */
+.tab-panel[data-tab="report"].active {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
 
 /* ── 폼 그리드 ───────────────────── */
 .form-grid {
@@ -276,6 +296,11 @@ td.tip:hover::after { opacity: 1; }
 }
 
 .range-more-btn:hover { background: #eef0f3; }
+
+/* 좁은 폭에서는 "단위" 글자 숨기고 화살표만 노출 (호버 시 title tooltip 으로 안내) */
+@media (max-width: 640px) {
+  .range-more-label { display: none; }
+}
 
 .range-more-menu {
   position: absolute;
@@ -404,15 +429,13 @@ td.tip:hover::after { opacity: 1; }
   border-radius: 12px;
   font-size: 11px;
   border: 1px solid transparent;
-  cursor: help;
 }
 #compare-status .stat-chip-count {
   font-weight: 700;
 }
 #compare-status .stat-chip.matched   { background: #e8f5e9; color: #2e7d32; border-color: #c8e6c9; }
 #compare-status .stat-chip.jira-only { background: #e3f2fd; color: #1565c0; border-color: #bbdefb; }
-#compare-status .stat-chip.tg-key    { background: #fff3e0; color: #ef6c00; border-color: #ffe0b2; }
-#compare-status .stat-chip.tg-nokey  { background: #fafafa; color: #757575; border-color: #e0e0e0; }
+#compare-status .stat-chip.tg-only   { background: #fff3e0; color: #ef6c00; border-color: #ffe0b2; }
 
 .toolbar {
   display: flex;
@@ -605,6 +628,8 @@ tr td.clickable:hover { background: rgba(0,0,0,0.05); }
 #report-output {
   width: 100%;
   resize: vertical;
+  flex: 1 1 auto;
+  min-height: 160px;
 }
 
 label {
@@ -877,9 +902,8 @@ input[type="text"][readonly]:hover {
   background: #eef0f3;
 }
 
-/* 즉시 뜨는 URL 툴팁 */
+/* URL 입력 래퍼. 툴팁은 전역 [data-tip] 규칙이 처리. */
 .url-wrap {
-  position: relative;
   width: 100%;
 }
 
@@ -891,26 +915,6 @@ input[type="text"][readonly]:hover {
   border-radius: 4px;
   font-size: 12px;
 }
-
-.url-wrap::after {
-  content: attr(data-tip);
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 6px);
-  transform: translateX(-50%);
-  background: #2b2b2b;
-  color: #eee;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 100ms ease;
-  z-index: 20;
-}
-
-.url-wrap:hover::after { opacity: 1; }
 
 /* ── 백업 복원 미리보기 모달 ─────────── */
 .bp-backdrop {
@@ -1083,7 +1087,7 @@ input[type="text"][readonly]:hover {
 .snackbar.error  { background: #c0392b; }
 .snackbar.ok     { background: #1b7a3a; }
 
-.snackbar-msg { flex: 1; line-height: 1.4; text-align: center; }
+.snackbar-msg { flex: 1; line-height: 1.4; text-align: center; white-space: pre-line; }
 
 .snackbar-action {
   background: rgba(255,255,255,0.2);
@@ -1110,26 +1114,68 @@ input[type="text"][readonly]:hover {
 
 .sync-bar {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
   margin-top: 8px;
+}
+.sync-bar.hidden { display: none; }
+/* sync-bar 안의 버튼/요소들이 .hidden 클래스로 숨겨지도록 보장. */
+.sync-card-actions > .hidden { display: none; }
+
+.sync-card {
   padding: 8px 10px;
   background: #f5f7fb;
   border: 1px solid #dde3ee;
   border-radius: 6px;
 }
-.sync-bar.hidden { display: none; }
+
+.sync-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.sync-card-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #fff;
+}
+.sync-card-status.hidden { display: none; }
+
+.sync-status-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sync-status-head #sync-info { margin: 0; }
+
+.sync-progress {
+  flex: 1 1 120px;
+  min-width: 80px;
+  height: 6px;
+  background: #e1e6ef;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.sync-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #1565d8 0%, #0747a6 100%);
+  border-radius: 3px;
+  transition: width 200ms ease;
+}
+.sync-progress-fill.complete {
+  background: linear-gradient(90deg, #2e7d32 0%, #1b5e20 100%);
+}
 .sync-next {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 8px;
-  background: #fff;
-  border: 1px solid #cfd6e2;
-  border-radius: 4px;
+  padding: 0;
   font-size: 12px;
-  max-width: 380px;
+  min-width: 0;
 }
 .sync-next.hidden { display: none; }
 .sync-next-label { color: #6b7280; white-space: nowrap; }
@@ -1137,6 +1183,8 @@ input[type="text"][readonly]:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .sync-help {
   margin-left: auto;
