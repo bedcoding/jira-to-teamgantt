@@ -7,18 +7,18 @@
     <rect x="64" y="0" width="64" height="128" fill="#48be88"/>
   </g>
 
-  <!-- 좌측 카드 - 중앙: 32x36, x=16, y=46 (좌 영역 0~64 안에서) -->
+  <!-- 좌측 카드 - 라운드 모서리로 실효 좌영역이 좁아진 것을 보정 (중심 x=39). -->
   <g>
-    <rect x="16" y="46" width="32" height="36" rx="5" fill="#fff"/>
-    <rect x="22" y="56" width="20" height="4" rx="2" fill="#0052cc" opacity="0.55"/>
-    <rect x="22" y="64" width="14" height="4" rx="2" fill="#0052cc" opacity="0.35"/>
-    <rect x="22" y="72" width="18" height="4" rx="2" fill="#0052cc" opacity="0.35"/>
+    <rect x="23" y="46" width="32" height="36" rx="5" fill="#fff"/>
+    <rect x="29" y="56" width="20" height="4" rx="2" fill="#0052cc" opacity="0.55"/>
+    <rect x="29" y="64" width="14" height="4" rx="2" fill="#0052cc" opacity="0.35"/>
+    <rect x="29" y="72" width="18" height="4" rx="2" fill="#0052cc" opacity="0.35"/>
   </g>
 
-  <!-- 우측 간트 바 - 중앙: x=80 (우 영역 64~128 안에서) -->
+  <!-- 우측 간트 바 - 좌측 끝 정렬 + 우측이 점점 짧아지는 역피라미드 -->
   <g fill="#fff">
-    <rect x="80" y="46" width="32" height="8" rx="2"/>
-    <rect x="84" y="60" width="28" height="8" rx="2"/>
-    <rect x="80" y="74" width="22" height="8" rx="2"/>
+    <rect x="73" y="46" width="32" height="8" rx="2"/>
+    <rect x="73" y="60" width="28" height="8" rx="2"/>
+    <rect x="73" y="74" width="22" height="8" rx="2"/>
   </g>
 </svg>
