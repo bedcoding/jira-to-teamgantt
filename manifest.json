@@ -3,15 +3,26 @@
   "name": "Jira ↔ TeamGantt",
   "version": "0.1.0",
   "description": "Jira 와 TeamGantt 의 내 작업을 좌우로 나열해 누락을 시각화합니다.",
-  "permissions": ["storage", "unlimitedStorage", "tabs", "activeTab", "scripting", "downloads"],
+  "permissions": ["storage", "unlimitedStorage", "tabs", "activeTab", "scripting", "downloads", "sidePanel"],
   "host_permissions": [
     "https://*.atlassian.net/*",
     "https://app.teamgantt.com/*",
     "https://api.teamgantt.com/*"
   ],
   "action": {
-    "default_title": "Jira ↔ TeamGantt",
-    "default_popup": "popup/popup.html"
+    "default_title": "Jira ↔ TeamGantt"
+  },
+  "commands": {
+    "inject-next-task": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+X",
+        "mac": "Command+Shift+X"
+      },
+      "description": "TeamGantt 활성 입력창에 다음 Jira 작업 주입"
+    }
+  },
+  "side_panel": {
+    "default_path": "popup/popup.html"
   },
   "background": {
     "service_worker": "background/service_worker.js",

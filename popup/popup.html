@@ -166,14 +166,29 @@
         <label for="compare-date-source">날짜</label>
         <select id="compare-date-source">
           <option value="jiraUpdated">Jira 업데이트</option>
-          <option value="jiraDue">Jira 마감일</option>
+          <option value="jiraCreated">Jira 생성일</option>
           <option value="tgStart">TeamGantt 시작일</option>
           <option value="tgEnd">TeamGantt 종료일</option>
         </select>
+
+        <label>화면에 보이는 상태</label>
+        <div id="include-status-chips" class="status-chips" data-tip="선택한 상태만 표에 보이고 동기화에도 포함됩니다. 비어 있으면 모든 상태 표시."></div>
       </div>
 
       <div class="card-actions">
         <span id="compare-status" class="status inline"></span>
+      </div>
+
+      <div id="sync-bar" class="sync-bar hidden">
+        <button id="btn-sync-start" class="primary">동기화 시작</button>
+        <button id="btn-sync-stop" class="danger hidden">중지</button>
+        <button id="btn-sync-detect" class="ghost" data-tip="현재 TeamGantt 페이지에서 task 입력창을 selector 가 잡는지 확인">입력창 감지 테스트</button>
+        <span id="sync-info" class="status inline"></span>
+        <div id="sync-next" class="sync-next hidden">
+          <span class="sync-next-label">다음:</span>
+          <span id="sync-next-text"></span>
+        </div>
+        <div id="sync-help" class="sync-help">?</div>
       </div>
     </div>
 
@@ -181,6 +196,7 @@
       <thead>
         <tr>
           <th>키</th>
+          <th>Jira 상태</th>
           <th>Jira 제목</th>
           <th>TeamGantt 제목</th>
           <th id="compare-date-col">날짜</th>
@@ -365,6 +381,22 @@
       <div class="bp-footer">
         <button class="bp-cancel" data-close="prefix-mgr-dialog">닫기</button>
         <button id="btn-prefix-save" class="primary">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 입력창 감지 테스트 결과 모달 -->
+  <div id="detect-result-dialog" class="bp-backdrop hidden">
+    <div class="bp-dialog" role="dialog" aria-modal="true">
+      <div class="bp-header">
+        <span>입력창 감지 테스트 결과</span>
+        <button class="bp-close" aria-label="닫기" data-close="detect-result-dialog">×</button>
+      </div>
+      <div class="bp-body">
+        <div id="detect-result-body"></div>
+      </div>
+      <div class="bp-footer">
+        <button class="bp-cancel" data-close="detect-result-dialog">닫기</button>
       </div>
     </div>
   </div>
