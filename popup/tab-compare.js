@@ -59,7 +59,7 @@ function renderTgCellForJiraOnly(tdT, r, confirmed) {
   if (confirmed) {
     tdT.innerHTML = `<button class="sync-mark sync-mark-confirmed" data-tip="이름/날짜 보정까지 완료 — 클릭해서 해제">✅ 보정 완료</button>`;
   } else {
-    tdT.innerHTML = `<button class="sync-mark sync-mark-done" data-tip="TeamGantt 에 등록됨 — 클릭해서 보정 완료로 표시">✓ 등록 완료</button>`;
+    tdT.innerHTML = `<button class="sync-mark sync-mark-done" data-tip="TeamGantt에 등록됨 — 클릭해서 보정 완료로 표시">✓ 등록 완료</button>`;
   }
   tdT.querySelector("button").addEventListener("click", async () => {
     const q = await getSyncQueue();
@@ -104,7 +104,7 @@ function cssEscape(s) {
 }
 
 function renderTgCellPending(tdT, r) {
-  tdT.innerHTML = `<span class="sync-pending-mark" data-tip="입력창에 박힘 — Enter 로 저장 후 다음 단축키">📋 입력됨</span> <button class="sync-pending-cancel" data-tip="입력만 하고 등록 안 한 경우 — 이 표시를 해제">×</button>`;
+  tdT.innerHTML = `<span class="sync-pending-mark" data-tip="입력창에 박힘 — Enter로 저장 후 다음 단축키">📋 입력됨</span> <button class="sync-pending-cancel" data-tip="입력만 하고 등록 안 한 경우 — 이 표시를 해제">×</button>`;
   tdT.querySelector(".sync-pending-cancel").addEventListener("click", async () => {
     const q = await getSyncQueue();
     if (q.pendingKey === r.key) {
@@ -318,7 +318,6 @@ async function refreshSyncUi() {
   const info = $("sync-info");
   const startBtn = $("btn-sync-start");
   const stopBtn  = $("btn-sync-stop");
-  const clearBtn = $("btn-sync-clear");
   const next     = $("sync-next");
   const nextText = $("sync-next-text");
   const statusLine = $("sync-status-card");
@@ -327,12 +326,7 @@ async function refreshSyncUi() {
   const remaining = q.items.length;
   const done = q.doneKeys.length;
   const pendingCount = q.pendingKey ? 1 : 0;
-  const confirmed = q.confirmedKeys?.length ?? 0;
   const total = done + remaining + pendingCount;
-
-  // 기록이 하나라도 있으면 [기록 전체 삭제] 노출.
-  const hasHistory = done > 0 || pendingCount > 0 || confirmed > 0;
-  clearBtn.classList.toggle("hidden", !hasHistory);
 
   const setProgress = (cur, tot) => {
     const pct = tot > 0 ? Math.min(100, Math.round((cur / tot) * 100)) : 0;
@@ -415,20 +409,47 @@ async function startSync() {
   await refreshSyncUi();
   const hk = await getHotkeyLabel();
   showSnackbar(
-    `동기화 시작 (${items.length}건).\nTeamGantt 페이지에서 [추가] 버튼을 누른 뒤 ${hk} 를 누르면 다음 작업이 입력됩니다.`,
+    `동기화 시작 (${items.length}건)\nTeamGantt 페이지에서 [추가] 버튼을 누른 뒤 ${hk} 를 누르면 다음 작업이 입력됩니다.`,
     { kind: "ok", duration: 5000 },
   );
 }
 
-// chrome.commands 에서 현재 등록된 단축키를 읽어 표시용 문자열로 변환.
+// chrome.commands 에서 현재 OS 단축키. ⇧⌘ 같은 기호 대신 풀어 표기.
 // 사용자가 chrome://extensions/shortcuts 에서 바꿔도 자동 반영.
 async function getHotkeyLabel() {
   try {
     const cmds = await chrome.commands.getAll();
     const c = cmds.find((x) => x.name === "inject-next-task");
-    if (c?.shortcut) return c.shortcut;
+    if (c?.shortcut) return prettifyShortcut(c.shortcut);
   } catch {}
   return "단축키";
+}
+
+// "⇧⌘X" 같은 Mac 기호를 "Cmd+Shift+X" 로 풀어 씀. 이미 "Ctrl+..." 처럼
+// 풀려 있는 경우는 그대로 유지.
+function prettifyShortcut(s) {
+  return s
+    .replace(/⌃/g, "Ctrl+")
+    .replace(/⌥/g, "Alt+")
+    .replace(/⇧/g, "Shift+")
+    .replace(/⌘/g, "Cmd+")
+    .trim();
+}
+
+// manifest 의 suggested_key 두 OS 값을 동시에 노출용으로 읽음.
+// chrome.commands 는 현재 OS 단축키만 주므로 manifest 를 직접 읽는다.
+async function getBothOsHotkeys() {
+  try {
+    const url = chrome.runtime.getURL("manifest.json");
+    const m = await (await fetch(url)).json();
+    const sk = m.commands?.["inject-next-task"]?.suggested_key ?? {};
+    return {
+      mac: prettifyShortcut(sk.mac ?? sk.default ?? ""),
+      win: prettifyShortcut(sk.default ?? ""),
+    };
+  } catch {
+    return { mac: "", win: "" };
+  }
 }
 
 async function detectTaskInput() {
@@ -458,7 +479,7 @@ function renderDetectResult(r) {
   const viewLabel = r.view === "gantt" ? "Gantt 뷰" : "List 뷰";
   const headLine = r.found
     ? `<p class="detect-ok">✓ <b>${viewLabel}</b> 에서 입력창을 찾았습니다 — selector: <code>${escapeHtml(r.finalSource)}</code></p>`
-    : `<p class="detect-fail">✗ <b>${viewLabel}</b> 에서 입력창을 못 찾았습니다. TeamGantt 에서 [추가] 버튼을 먼저 누르고 다시 테스트해주세요.</p>`;
+    : `<p class="detect-fail">✗ <b>${viewLabel}</b>에서 입력창을 못 찾았습니다. TeamGantt에서 [추가] 버튼을 먼저 누르고 다시 테스트해주세요.</p>`;
   const steps = r.steps.map((s) => {
     const icon = s.matched ? "✓" : "✗";
     const cls = s.matched ? "detect-step-ok" : "detect-step-ng";
@@ -484,28 +505,12 @@ function humanizeContentError(e) {
 
 async function stopSync() {
   // 단축키 동작만 멈춤. items 만 비우고 doneKeys/confirmedKeys/pendingKey 는 유지.
-  // 진행 기록(✓ 등록 완료 / ✅ 보정 완료 / 📋 입력됨) 은 사용자가 [기록 전체 삭제] 를 누르기 전까지 보존.
+  // 진행 기록(✓ 등록 완료 / ✅ 보정 완료 / 📋 입력됨) 은 다음 [동기화 시작] 까지 보존.
   const q = await getSyncQueue();
   q.items = [];
   await setSyncQueue(q);
   await refreshSyncUi();
   showSnackbar("단축키 동작을 중지했습니다. 표시된 기록은 그대로 유지됩니다.", { kind: "ok", duration: 3000 });
-  await renderCompare();
-}
-
-async function clearSyncHistory() {
-  const q = await getSyncQueue();
-  const total = (q.doneKeys?.length ?? 0) + (q.confirmedKeys?.length ?? 0) + (q.pendingKey ? 1 : 0);
-  if (total === 0) {
-    await clearSyncQueue();
-    await refreshSyncUi();
-    await renderCompare();
-    return;
-  }
-  if (!confirm(`동기화 기록 ${total}건이 모두 사라집니다. 진행하시겠습니까?`)) return;
-  await clearSyncQueue();
-  await refreshSyncUi();
-  showSnackbar("동기화 기록을 삭제했습니다.", { kind: "warn" });
   await renderCompare();
 }
 
@@ -546,7 +551,6 @@ export async function initCompareTab() {
 
   $("btn-sync-start").addEventListener("click", startSync);
   $("btn-sync-stop").addEventListener("click", stopSync);
-  $("btn-sync-clear").addEventListener("click", clearSyncHistory);
   $("btn-sync-detect").addEventListener("click", detectTaskInput);
   wireDialogClose("detect-result-dialog");
 
@@ -581,8 +585,21 @@ export async function initCompareTab() {
   HOTKEY_HINT = hk;
   $("btn-sync-start").setAttribute(
     "data-tip",
-    `Jira 에는 있고 TeamGantt 에는 없는 작업들을 TeamGantt 에 한 건씩 자동 입력합니다.\n\n사용법:\n1. [동기화 시작] 클릭\n2. TeamGantt 페이지에서 [추가] 버튼으로 입력창 띄우기\n3. ${hk} 누르면 다음 작업이 자동으로 입력창에 박힘\n4. Enter 로 저장 → 다시 ${hk}`,
+    `TeamGantt의 입력창이 떠 있는 상태에서 단축키를 누르면 Jira에만 있는 작업들을 TeamGantt에 자동 입력합니다.\n\n사용법:\n1. [동기화 시작] 클릭\n2. TeamGantt 페이지에서 (+) 버튼을 눌러서 입력창 띄우기\n3. 단축키를 누르면 누락된 항목이 자동으로 입력창에 박힘\n4. 입력창에서 포커스가 사라지면 TeamGantt에 저장`,
   );
+
+  // sync-bar 우측 끝에 현재 OS 단축키만 작게 표시. 호버 툴팁에 다른 OS 키 안내.
+  const { mac, win } = await getBothOsHotkeys();
+  const badge = $("hotkey-badge");
+  if (badge && (mac || win)) {
+    const isMac = /Mac/i.test(navigator.userAgentData?.platform ?? navigator.platform ?? "");
+    const my    = isMac ? mac : win;
+    const other = isMac ? win : mac;
+    const otherLabel = isMac ? "윈도우" : "맥";
+    badge.innerHTML = `<span class="hotkey-label">동기화 단축키:</span> <span class="hotkey-keys">${escapeHtml(my || "-")}</span>`;
+    if (other) badge.setAttribute("data-tip", `${otherLabel}: ${other}`);
+    else       badge.removeAttribute("data-tip");
+  }
 
   // background 가 주입 결과 알려주면 UI 갱신.
   chrome.runtime.onMessage.addListener((msg) => {

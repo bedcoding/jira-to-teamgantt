@@ -1199,6 +1199,25 @@ input[type="text"][readonly]:hover {
   justify-content: center;
   cursor: help;
 }
+
+.hotkey-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: help;
+}
+.hotkey-badge .hotkey-label {
+  color: #94a3b8;
+}
+.hotkey-badge .hotkey-keys {
+  font-family: -apple-system, "Menlo", monospace;
+  color: #475569;
+  font-weight: 600;
+}
 .sync-pending-mark {
   color: #d97706;
   font-weight: 600;
