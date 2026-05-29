@@ -1,4 +1,4 @@
-# Jira ↔ TeamGantt
+# Jira to TeamGantt
 
 Jira 이슈와 TeamGantt 작업을 한 곳에서 모아 비교하고, 기간별로 텍스트로 뽑아내는 Chrome 확장 프로그램입니다.
 
