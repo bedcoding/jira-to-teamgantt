@@ -171,39 +171,30 @@
           <option value="tgEnd">TeamGantt 종료일</option>
         </select>
 
-      </div>
-
-      <div class="filter-chip-group">
-        <div class="filter-chip-row">
-          <label>종류</label>
-          <div id="include-kind-chips" class="status-chips"></div>
-        </div>
-        <div class="filter-chip-row">
-          <label>상태</label>
-          <div id="include-status-chips" class="status-chips"></div>
+        <label class="filter-label">필터</label>
+        <div class="filter-box">
+          <div id="include-kind-chips" class="status-chips kind-chips"></div>
+          <div id="include-status-chips" class="status-chips status-chips-status"></div>
         </div>
       </div>
 
-      <div id="sync-bar" class="sync-bar hidden">
-        <div class="sync-card sync-card-actions">
-          <button id="btn-sync-start" class="primary">동기화 시작</button>
-          <button id="btn-sync-stop" class="hidden" data-tip="단축키 동작만 멈춤 (📋 작업 기록: 유지)">동기화 중지</button>
-          <button id="btn-sync-detect" class="ghost" data-tip="사용자가 (+) 버튼을 눌러서 입력창을 띄운 상태인지 확인">입력창 감지</button>
-          <div id="hotkey-badge" class="hotkey-badge" data-tip="작업 입력 단축키. 운영체제별로 다름."></div>
-        </div>
-        <div id="sync-status-card" class="sync-card sync-card-status hidden">
-          <div class="sync-status-head">
-            <span id="sync-info" class="status inline"></span>
-            <div class="sync-progress">
-              <div id="sync-progress-fill" class="sync-progress-fill"></div>
-            </div>
-          </div>
-          <div id="sync-next" class="sync-next hidden">
-            <span class="sync-next-label">다음:</span>
-            <span id="sync-next-text"></span>
-            <button id="btn-sync-skip" class="sync-skip" data-tip="이 항목을 건너뛰고 등록 완료로 처리">⏭</button>
-          </div>
-        </div>
+      <div id="sync-bar" class="card-actions sync-bar hidden">
+        <button id="btn-sync-start" class="primary">동기화 시작</button>
+        <button id="btn-sync-stop" class="hidden" data-tip="단축키 동작만 멈춤 (📋 작업 기록: 유지)">동기화 중지</button>
+        <button id="btn-sync-detect" class="ghost" data-tip="사용자가 (+) 버튼을 눌러서 입력창을 띄운 상태인지 확인">입력창 감지</button>
+        <div id="hotkey-badge" class="hotkey-badge" data-tip="작업 입력 단축키. 운영체제별로 다름."></div>
+      </div>
+    </div>
+
+    <div id="sync-status-card" class="sync-status-row hidden">
+      <span id="sync-info" class="status inline"></span>
+      <div class="sync-progress">
+        <div id="sync-progress-fill" class="sync-progress-fill"></div>
+      </div>
+      <div id="sync-next" class="sync-next hidden">
+        <span class="sync-next-label">다음:</span>
+        <span id="sync-next-text"></span>
+        <button id="btn-sync-skip" class="sync-skip" data-tip="이 항목을 건너뛰고 등록 완료로 처리">⏭</button>
       </div>
     </div>
 

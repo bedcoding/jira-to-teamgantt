@@ -10,13 +10,15 @@ body {
   min-width: 560px;
   background: #eef1f4;
   color: #222;
-  overflow-x: hidden;
+  /* 페이지 자체 스크롤은 없음 — 헤더(.tabs)는 고정, 본문 탭이 자기 영역 안에서만 스크롤. */
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
 .tabs {
   display: flex;
+  flex: 0 0 auto;
   background: #fff;
   border-bottom: 1px solid #eaecef;
   align-items: stretch;
@@ -162,14 +164,19 @@ td.tip { cursor: help; }
   padding: 16px 18px;
 }
 
-.tab-panel.active { display: block; }
+/* 활성 탭이 헤더 아래 남는 세로 공간을 모두 차지하고, 그 안에서만 스크롤. */
+.tab-panel.active {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
 
-/* 추출 탭은 남는 세로 공간을 모두 차지해서 textarea 가 늘어날 수 있게 */
+/* 추출 탭은 textarea 가 늘어나야 하니 flex 컬럼. */
 .tab-panel[data-tab="report"].active {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
+  overflow-y: hidden; /* textarea 가 자체 스크롤 가짐 */
 }
 
 /* ── 폼 그리드 ───────────────────── */
@@ -1136,44 +1143,29 @@ input[type="text"][readonly]:hover {
   line-height: 1;
 }
 
-.sync-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-}
+/* sync-bar 는 card-actions 클래스도 함께 가져서 다른 탭 액션 줄과 동일 스타일.
+   여기서는 hidden 클래스가 제대로 먹도록만 강제. */
 .sync-bar.hidden { display: none; }
-/* sync-bar 안의 버튼/요소들이 .hidden 클래스로 숨겨지도록 보장. */
-.sync-card-actions > .hidden { display: none; }
+.sync-bar > .hidden { display: none; }
 
-.sync-card {
-  padding: 8px 10px;
-  background: #f5f7fb;
-  border: 1px solid #dde3ee;
-  border-radius: 6px;
-}
-
-.sync-card-actions {
+/* 동기화 진행 라인 — 표 바로 위에 sticky 로 떠 있어 스크롤해도 따라온다. */
+.sync-status-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-}
-
-.sync-card-status {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  background: #fff;
-}
-.sync-card-status.hidden { display: none; }
-
-.sync-status-head {
-  display: flex;
-  align-items: center;
   gap: 10px;
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+  border: 1px solid #d8dce1;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
 }
-.sync-status-head #sync-info { margin: 0; }
+.sync-status-row.hidden { display: none; }
+.sync-status-row #sync-info { margin: 0; font-weight: 500; }
 
 .sync-progress {
   flex: 1 1 120px;
@@ -1342,27 +1334,32 @@ input[type="text"][readonly]:hover {
   align-items: center;
 }
 
-/* 두 칩 라벨(종류/상태)을 하나의 묶음으로 묶고, 위쪽에 점선으로 form-grid 와 시각 분리. */
-.filter-chip-group {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 10px;
-  align-items: center;
-  margin: 6px 0 10px;
-  padding-top: 10px;
-  border-top: 1px dashed #dde3ee;
-}
-.filter-chip-row {
-  display: contents;
-}
-.filter-chip-row > label {
-  margin: 0;
-  font-size: 12px;
-  color: #555;
-  font-weight: 500;
-  line-height: 24px;
-}
 .status-chips-empty { color: #9ca3af; font-size: 12px; }
+
+/* 필터 박스 — '필터' 라벨 우측에 종류/상태 칩을 둥근 회색 테두리로 묶음. */
+.filter-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: #fafbfd;
+  border: 1px solid #dde3ee;
+  border-radius: 8px;
+}
+/* '필터' 라벨은 박스 상단과 시각적으로 맞춤. */
+.filter-label { align-self: start; line-height: 36px !important; }
+
+/* 종류 칩 = 청록(teal), 상태 칩 = 파랑 — hue 거리로 구분. */
+.kind-chips .status-chip.on {
+  background: #ccfbf1;
+  border-color: #2dd4bf;
+  color: #0f766e;
+}
+.status-chips-status .status-chip.on {
+  background: #dbeafe;
+  border-color: #60a5fa;
+  color: #1e40af;
+}
 .status-chip {
   font-size: 12px;
   padding: 3px 8px;
