@@ -1,6 +1,7 @@
 import {
   getAll, getSettings, setSettings,
   getSyncQueue, setSyncQueue, clearSyncQueue,
+  getManualChecked, setManualChecked,
 } from "../lib/storage.js";
 import { showSnackbar } from "./snackbar.js";
 
@@ -57,9 +58,9 @@ function classifyRows(jiraByKey, tgByKey, tgWithoutKey) {
 // 전체 표 재렌더 시 발생하는 깜빡임/스크롤 튐을 피하려고 td 단위로 그린다.
 function renderTgCellForJiraOnly(tdT, r, confirmed) {
   if (confirmed) {
-    tdT.innerHTML = `<button class="sync-mark sync-mark-confirmed" data-tip="이름/날짜 보정까지 완료 — 클릭해서 해제">✅ 보정 완료</button>`;
+    tdT.innerHTML = `<button class="sync-mark sync-mark-confirmed" data-tip="클릭해서 해제">✅ 보정 완료</button>`;
   } else {
-    tdT.innerHTML = `<button class="sync-mark sync-mark-done" data-tip="TeamGantt에 등록됨 — 클릭해서 보정 완료로 표시">✓ 등록 완료</button>`;
+    tdT.innerHTML = `<button class="sync-mark sync-mark-done" data-tip="클릭해서 보정 완료로 표시">✓ 등록 완료</button>`;
   }
   tdT.querySelector("button").addEventListener("click", async () => {
     const q = await getSyncQueue();
@@ -103,8 +104,37 @@ function cssEscape(s) {
   return String(s).replace(/"/g, '\\"');
 }
 
+// 빈 TeamGantt 셀 — 사용자가 클릭해서 직접 ✓ 표시 가능. 동기화 큐와 무관.
+// 단, 큐가 진행 중이면 클릭이 "건너뛰기 + 등록 완료" 로 동작 (자동 흐름과 통합).
+function renderTgCellManual(tdT, r, checked) {
+  if (checked) {
+    tdT.innerHTML = `<button class="sync-mark sync-mark-manual" data-tip="수동 체크 — 클릭해서 해제">✓</button>`;
+  } else {
+    tdT.innerHTML = `<button class="sync-mark sync-mark-empty" data-tip="클릭해서 ✓ 체크">—</button>`;
+  }
+  tdT.querySelector("button").addEventListener("click", async () => {
+    const q = await getSyncQueue();
+    const inQueue = q.items.some((it) => it.key === r.key);
+    if (inQueue) {
+      // 동기화 진행 중 + 이 항목이 큐에 있음 → 건너뛰기 + 등록 완료 처리.
+      q.items = q.items.filter((it) => it.key !== r.key);
+      q.doneKeys.push(r.key);
+      await setSyncQueue(q);
+      await refreshSyncUi();
+      renderTgCellForJiraOnly(tdT, r, false);
+      return;
+    }
+    // 큐 밖이면 수동 ✓ 토글 (기존 동작).
+    const set = await getManualChecked();
+    if (set.has(r.key)) set.delete(r.key);
+    else                set.add(r.key);
+    await setManualChecked(set);
+    renderTgCellManual(tdT, r, set.has(r.key));
+  });
+}
+
 function renderTgCellPending(tdT, r) {
-  tdT.innerHTML = `<span class="sync-pending-mark" data-tip="입력창에 박힘 — Enter로 저장 후 다음 단축키">📋 입력됨</span> <button class="sync-pending-cancel" data-tip="입력만 하고 등록 안 한 경우 — 이 표시를 해제">×</button>`;
+  tdT.innerHTML = `<span class="sync-pending-mark">📋 입력됨</span> <button class="sync-pending-cancel" data-tip="입력만 하고 등록 안 한 경우 — 이 표시를 해제">×</button>`;
   tdT.querySelector(".sync-pending-cancel").addEventListener("click", async () => {
     const q = await getSyncQueue();
     if (q.pendingKey === r.key) {
@@ -119,7 +149,7 @@ function renderTgCellPending(tdT, r) {
   });
 }
 
-function renderRow(r, dateSource, doneKeys, pendingKey, confirmedKeys) {
+function renderRow(r, dateSource, doneKeys, pendingKey, confirmedKeys, manualChecked) {
   const tr = document.createElement("tr");
   tr.className = r.kind;
   const tdKey = document.createElement("td");
@@ -169,6 +199,9 @@ function renderRow(r, dateSource, doneKeys, pendingKey, confirmedKeys) {
   } else if (r.kind === "jira-only" && pendingKey === r.key) {
     tr.dataset.jiraOnlyKey = r.key;
     renderTgCellPending(tdT, r);
+  } else if (r.kind === "jira-only") {
+    tr.dataset.jiraOnlyKey = r.key;
+    renderTgCellManual(tdT, r, manualChecked?.has(r.key));
   } else {
     tdT.textContent = "—"; tdT.style.color = "#bbb";
   }
@@ -210,6 +243,20 @@ function applyStatusFilter(rows, includeStatuses) {
   });
 }
 
+// 종류 칩으로 매칭/매칭 안됨 필터. include 가 비어 있으면 전부 통과.
+// 'jira-only' (Jira 에만 있음) 와 'tg-orphan-*' (TeamGantt 에만 있음) 모두 '매칭 안됨' 으로 묶는다.
+const KIND_MAP = {
+  matched:                "매칭",
+  "jira-only":            "매칭 안됨",
+  "tg-orphan-with-key":   "매칭 안됨",
+  "tg-orphan-no-key":     "매칭 안됨",
+};
+function applyKindFilter(rows, includeKinds) {
+  const include = new Set(includeKinds ?? []);
+  if (include.size === 0) return rows;
+  return rows.filter((r) => include.has(KIND_MAP[r.kind] ?? r.kind));
+}
+
 function applySearch(rows, q) {
   if (!q) return rows;
   const lo = q.toLowerCase();
@@ -233,6 +280,7 @@ async function renderCompare() {
   const doneKeys = new Set(syncQ.doneKeys ?? []);
   const confirmedKeys = new Set(syncQ.confirmedKeys ?? []);
   const pendingKey = syncQ.pendingKey ?? null;
+  const manualChecked = await getManualChecked();
   const tgByKey = {};
   const tgWithoutKey = [];
   for (const task of Object.values(tgTasks)) {
@@ -243,9 +291,10 @@ async function renderCompare() {
   const q = $("compare-search").value.trim();
   rows = applySearch(rows, q);
   rows = applyStatusFilter(rows, settings.syncIncludeStatuses ?? []);
+  rows = applyKindFilter(rows, settings.syncIncludeKinds ?? []);
   sortRowsForDisplay(rows, dateSource);
 
-  for (const r of rows) tbody.appendChild(renderRow(r, dateSource, doneKeys, pendingKey, confirmedKeys));
+  for (const r of rows) tbody.appendChild(renderRow(r, dateSource, doneKeys, pendingKey, confirmedKeys, manualChecked));
 
   $("compare-date-col").textContent = DATE_LABEL[dateSource] ?? "날짜";
 
@@ -253,32 +302,34 @@ async function renderCompare() {
   const jiraOnly  = rows.filter((r) => r.kind === "jira-only").length;
   const orphanK   = rows.filter((r) => r.kind === "tg-orphan-with-key").length;
   const orphanNK  = rows.filter((r) => r.kind === "tg-orphan-no-key").length;
-  const jiraTotal = Object.keys(jiraIssues).length;
-  const tgTotal   = Object.keys(tgTasks).length;
-
-  const chip = (kind, label, count) =>
-    `<span class="stat-chip ${kind}">`
-    + `<span class="stat-chip-label">${label}</span>`
-    + `<span class="stat-chip-count">${count}</span>`
-    + `</span>`;
-
-  $("compare-status").innerHTML =
-    `<span class="stat-total">Jira ${jiraTotal} · TeamGantt ${tgTotal}</span>`
-    + chip("matched",   "매칭",        matched)
-    + chip("jira-only", "Jira만",      jiraOnly)
-    + chip("tg-only",   "TeamGantt만", orphanK + orphanNK);
 
   // 'Jira만' 행이 있으면 동기화 바 노출.
   const syncBar = $("sync-bar");
   if (jiraOnly > 0) syncBar.classList.remove("hidden");
   else              syncBar.classList.add("hidden");
 
+  renderKindChips(settings.syncIncludeKinds ?? [], { matched, unmatched: jiraOnly + orphanK + orphanNK });
   await renderStatusChips(jiraIssues, settings.syncIncludeStatuses ?? []);
 
   // 새 행 만들어 붙인 뒤 스크롤 복원. 다음 프레임에 해야 DOM 반영 후 정확히 적용됨.
   requestAnimationFrame(() => {
     scroller.scrollTop = savedScroll;
   });
+}
+
+// 매칭/매칭 안됨/TeamGantt만 3가지 종류 칩 노출. 비어 있으면 전체 ON 으로 본다.
+function renderKindChips(includeKinds, counts) {
+  const wrap = $("include-kind-chips");
+  if (!wrap) return;
+  const include = new Set(includeKinds);
+  const KINDS = [
+    { key: "매칭",      count: counts.matched },
+    { key: "매칭 안됨", count: counts.unmatched },
+  ];
+  wrap.innerHTML = KINDS.map(({ key, count }) => {
+    const on = include.size === 0 || include.has(key);
+    return `<button class="status-chip ${on ? "on" : "off"}" data-kind="${escapeHtml(key)}">${escapeHtml(key)} ${count}</button>`;
+  }).join("") + `<button class="status-chip-clear" data-tip="모든 종류 표시(=필터 해제)">전체</button>`;
 }
 
 // 'Jira만' 행에 등장하는 상태들만 칩으로 노출. 사용자가 클릭하면 토글 후 저장 + 재렌더.
@@ -368,12 +419,9 @@ async function refreshSyncUi() {
   startBtn.classList.add("hidden");
   stopBtn.classList.remove("hidden");
   next.classList.remove("hidden");
-  nextText.textContent = `${q.items[0].text}  →  ${HOTKEY_HINT}`;
+  nextText.textContent = q.items[0].text;
   setProgress(done, total);
 }
-
-// 단축키 라벨은 chrome.commands 가 등록한 실제 값. 초기 로드 시 한 번 채움.
-let HOTKEY_HINT = "단축키";
 
 async function startSync() {
   // '완료' 버튼 역할: 마지막 pending 을 done 으로 승격 + 큐 종료.
@@ -399,6 +447,7 @@ async function startSync() {
   const q = $("compare-search").value.trim();
   rows = applySearch(rows, q);
   rows = applyStatusFilter(rows, settings.syncIncludeStatuses ?? []);
+  rows = applyKindFilter(rows, settings.syncIncludeKinds ?? []);
   sortRowsForDisplay(rows, dateSource);
   const items = buildQueueFromJiraOnly(rows, settings.syncIncludeStatuses);
   if (items.length === 0) {
@@ -514,6 +563,27 @@ async function stopSync() {
   await renderCompare();
 }
 
+// 현재 큐의 맨 앞 항목을 건너뛰고 등록 완료(✓) 로 승격.
+// 단축키 동작과 동일하게 td 만 부분 갱신해 스크롤·깜빡임을 막는다.
+async function skipNext() {
+  const q = await getSyncQueue();
+  if (q.items.length === 0) {
+    showSnackbar("건너뛸 항목이 없습니다.", { kind: "warn" });
+    return;
+  }
+  const skipped = q.items.shift();
+  q.doneKeys.push(skipped.key);
+  await setSyncQueue(q);
+  await refreshSyncUi();
+  // 비교 표에서 그 행의 TG 셀만 ✓ 등록 완료로 교체.
+  const tr = document.querySelector(`#compare-table tr[data-jira-only-key="${cssEscape(skipped.key)}"]`);
+  const tdT = tr?.children[3];
+  if (tdT) {
+    const summaryText = tr?.children[2]?.textContent ?? "";
+    renderTgCellForJiraOnly(tdT, { key: skipped.key, jira: { summary: summaryText } }, false);
+  }
+}
+
 function openDialog(id) { document.getElementById(id).classList.remove("hidden"); }
 function closeDialog(id) { document.getElementById(id).classList.add("hidden"); }
 
@@ -552,7 +622,34 @@ export async function initCompareTab() {
   $("btn-sync-start").addEventListener("click", startSync);
   $("btn-sync-stop").addEventListener("click", stopSync);
   $("btn-sync-detect").addEventListener("click", detectTaskInput);
+  $("btn-sync-skip").addEventListener("click", skipNext);
   wireDialogClose("detect-result-dialog");
+
+  // 종류 칩 토글: 클릭 시 includeKinds 갱신.
+  $("include-kind-chips").addEventListener("click", async (e) => {
+    const target = e.target.closest("button");
+    if (!target) return;
+    const cur = await getSettings();
+    const include = new Set(cur.syncIncludeKinds ?? []);
+    if (target.classList.contains("status-chip-clear")) {
+      include.clear();
+    } else {
+      const k = target.dataset.kind;
+      if (!k) return;
+      if (include.size === 0) {
+        const all = [...$("include-kind-chips").querySelectorAll("button[data-kind]")]
+          .map((b) => b.dataset.kind);
+        for (const x of all) include.add(x);
+        include.delete(k);
+      } else if (include.has(k)) {
+        include.delete(k);
+      } else {
+        include.add(k);
+      }
+    }
+    await setSettings({ syncIncludeKinds: [...include] });
+    await renderCompare();
+  });
 
   // 상태 칩 토글: 클릭 시 includeStatuses 갱신.
   $("include-status-chips").addEventListener("click", async (e) => {
@@ -582,7 +679,6 @@ export async function initCompareTab() {
   });
 
   const hk = await getHotkeyLabel();
-  HOTKEY_HINT = hk;
   $("btn-sync-start").setAttribute(
     "data-tip",
     `TeamGantt의 입력창이 떠 있는 상태에서 단축키를 누르면 Jira에만 있는 작업들을 TeamGantt에 자동 입력합니다.\n\n사용법:\n1. [동기화 시작] 클릭\n2. TeamGantt 페이지에서 (+) 버튼을 눌러서 입력창 띄우기\n3. 단축키를 누르면 누락된 항목이 자동으로 입력창에 박힘\n4. 입력창에서 포커스가 사라지면 TeamGantt에 저장`,
@@ -614,7 +710,7 @@ export async function initCompareTab() {
       return;
     }
     if (msg?.type === "SYNC_QUEUE_EMPTY") {
-      showSnackbar("동기화 큐가 비어 있습니다. 비교 탭에서 [동기화 시작] 을 눌러주세요.", { kind: "warn" });
+      showSnackbar("동기화 큐가 비어 있습니다. 비교 탭에서 [동기화 시작]을 눌러주세요.", { kind: "warn" });
       return;
     }
     if (msg?.type === "SYNC_NO_TG_TAB") {

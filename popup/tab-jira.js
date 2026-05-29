@@ -182,9 +182,7 @@ async function renderJiraTable() {
     tr.append(c(it.key), c(it.summary), c(it.status), c(it.assignee), c(it.updated));
     tbody.appendChild(tr);
   }
-  $("jira-status").textContent = pageSize === 0
-    ? `누적 ${total}건`
-    : `누적 ${total}건 · 페이지 ${jiraPage}/${Math.max(1, Math.ceil(total / pageSize))}`;
+  $("jira-status").textContent = `누적 ${total}건`;
   renderPager($("jira-pager"), total, pageSize, jiraPage, (p) => {
     jiraPage = p;
     renderJiraTable();

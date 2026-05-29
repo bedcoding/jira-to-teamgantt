@@ -367,12 +367,15 @@ td.tip { cursor: help; }
 
 .card-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px dashed #eaecef;
 }
+/* 액션 카드 안의 버튼 라벨은 항상 한 줄로 유지(폭 부족 시 다음 줄로 wrap 됨). */
+.card-actions > button { white-space: nowrap; flex: 0 0 auto; }
 
 .card-title {
   font-size: 12px;
@@ -590,6 +593,8 @@ th, td {
   word-break: break-word;
   overflow-wrap: anywhere;
 }
+/* 모든 표 헤더는 가운데 정렬 (데이터 정렬과 무관하게 일관). */
+table th { text-align: center; }
 
 th { background: #f5f5f5; font-weight: 600; }
 
@@ -597,14 +602,14 @@ th { background: #f5f5f5; font-weight: 600; }
 th:first-child, td:first-child { padding-left: 12px; }
 th:last-child,  td:last-child  { padding-right: 12px; }
 
-/* Jira 테이블 컬럼 폭: 키 / 제목 / 상태 / 담당 / 업데이트 */
-#jira-table th:nth-child(1), #jira-table td:nth-child(1) { width: 100px; }
-#jira-table th:nth-child(3), #jira-table td:nth-child(3) { width: 70px; }
-#jira-table th:nth-child(4), #jira-table td:nth-child(4) { width: 70px; }
-#jira-table th:nth-child(5), #jira-table td:nth-child(5) { width: 160px; }
+/* Jira 테이블 컬럼 폭 + 정렬: 키 / 제목 / 상태 / 담당 / 업데이트 */
+#jira-table th:nth-child(1), #jira-table td:nth-child(1) { width: 100px; text-align: center; }
+#jira-table th:nth-child(3), #jira-table td:nth-child(3) { width: 70px; text-align: center; }
+#jira-table th:nth-child(4), #jira-table td:nth-child(4) { width: 70px; text-align: center; }
+#jira-table th:nth-child(5), #jira-table td:nth-child(5) { width: 160px; text-align: center; }
 
 /* TeamGantt 테이블 컬럼 폭: 키 / 제목 / 시작 / 종료 / 진행 */
-#tg-table th:nth-child(1), #tg-table td:nth-child(1) { width: 100px; }
+#tg-table th:nth-child(1), #tg-table td:nth-child(1) { width: 100px; text-align: center; }
 #tg-table th:nth-child(3), #tg-table td:nth-child(3) { width: 90px; text-align: center; }
 #tg-table th:nth-child(4), #tg-table td:nth-child(4) { width: 90px; text-align: center; }
 #tg-table th:nth-child(5), #tg-table td:nth-child(5) { width: 60px; text-align: center; }
@@ -651,15 +656,34 @@ h3 {
 }
 
 #compare-table { table-layout: fixed; width: 100%; }
-#compare-table td { word-break: break-word; }
+#compare-table td { word-break: break-word; vertical-align: middle; }
 /* 1: 키, 2: Jira 상태, 3: Jira 제목, 4: TeamGantt 제목, 5: 날짜 */
-#compare-table th:nth-child(1), #compare-table td:nth-child(1) { width: 90px; }
+#compare-table th:nth-child(1), #compare-table td:nth-child(1) {
+  width: 90px;
+  text-align: center;
+}
 #compare-table th:nth-child(2), #compare-table td:nth-child(2) {
   width: 70px;
   white-space: nowrap;
   font-size: 12px;
+  text-align: center;
 }
-#compare-table th:nth-child(5), #compare-table td:nth-child(5) { width: 90px; white-space: nowrap; }
+/* Jira/TeamGantt 제목 컬럼은 데이터만 좌측 정렬(긴 텍스트). 헤더는 가운데 유지. */
+#compare-table td:nth-child(3),
+#compare-table td:nth-child(4) { text-align: left; }
+#compare-table th:nth-child(5), #compare-table td:nth-child(5) {
+  width: 90px;
+  white-space: nowrap;
+  text-align: center;
+}
+/* TeamGantt 컬럼 안의 ✓/✅/📋 마크 버튼들은 셀 중앙에 오도록. */
+#compare-table td:nth-child(4) .sync-mark,
+#compare-table td:nth-child(4) .sync-pending-mark,
+#compare-table td:nth-child(4) .sync-pending-cancel {
+  display: inline-block;
+}
+#compare-table td:nth-child(4):has(.sync-mark) { text-align: center; }
+#compare-table td:nth-child(4):has(.sync-pending-mark) { text-align: center; }
 
 .empty-note {
   display: none;
@@ -1179,6 +1203,27 @@ input[type="text"][readonly]:hover {
 }
 .sync-next.hidden { display: none; }
 .sync-next-label { color: #6b7280; white-space: nowrap; }
+.sync-skip {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  background: #fff;
+  border: 1px solid #cfd6e2;
+  border-radius: 4px;
+  color: #475569;
+  cursor: pointer;
+}
+.sync-skip:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #1f2937;
+}
+/* ⏭ 버튼은 sync-next 우측 끝에 있어서 툴팁을 우측 기준으로 펼친다. */
+.sync-skip[data-tip]:not([data-tip=""])::after {
+  left: auto;
+  right: 0;
+}
 #sync-next-text {
   white-space: nowrap;
   overflow: hidden;
@@ -1242,6 +1287,30 @@ input[type="text"][readonly]:hover {
   border-color: #93c5fd;
 }
 .sync-mark-confirmed:hover { background: #bfdbfe; }
+/* 수동 체크 — 색이 동기화 흐름과 구분되도록 회색 톤. */
+.sync-mark-manual {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+.sync-mark-manual:hover { background: #e2e8f0; }
+/* 빈 셀 — 평소엔 — 글자만, 호버 시 셀 전체에 색 + 점선 테두리. */
+.sync-mark-empty {
+  display: inline-block;
+  background: transparent;
+  color: #bbb;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-weight: 400;
+  padding: 2px 8px;
+  text-align: center;
+}
+.sync-mark-empty:hover {
+  background: #f1f5f9;
+  color: #475569;
+  border-style: dashed;
+  border-color: #cbd5e1;
+}
 
 .detect-ok { color: #16a34a; margin: 0 0 10px; }
 .detect-fail { color: #dc2626; margin: 0 0 10px; }
@@ -1271,6 +1340,27 @@ input[type="text"][readonly]:hover {
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
+}
+
+/* 두 칩 라벨(종류/상태)을 하나의 묶음으로 묶고, 위쪽에 점선으로 form-grid 와 시각 분리. */
+.filter-chip-group {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+  align-items: center;
+  margin: 6px 0 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #dde3ee;
+}
+.filter-chip-row {
+  display: contents;
+}
+.filter-chip-row > label {
+  margin: 0;
+  font-size: 12px;
+  color: #555;
+  font-weight: 500;
+  line-height: 24px;
 }
 .status-chips-empty { color: #9ca3af; font-size: 12px; }
 .status-chip {

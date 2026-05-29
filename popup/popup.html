@@ -171,12 +171,17 @@
           <option value="tgEnd">TeamGantt 종료일</option>
         </select>
 
-        <label>화면에 보이는 상태</label>
-        <div id="include-status-chips" class="status-chips"></div>
       </div>
 
-      <div class="card-actions">
-        <span id="compare-status" class="status inline"></span>
+      <div class="filter-chip-group">
+        <div class="filter-chip-row">
+          <label>종류</label>
+          <div id="include-kind-chips" class="status-chips"></div>
+        </div>
+        <div class="filter-chip-row">
+          <label>상태</label>
+          <div id="include-status-chips" class="status-chips"></div>
+        </div>
       </div>
 
       <div id="sync-bar" class="sync-bar hidden">
@@ -196,6 +201,7 @@
           <div id="sync-next" class="sync-next hidden">
             <span class="sync-next-label">다음:</span>
             <span id="sync-next-text"></span>
+            <button id="btn-sync-skip" class="sync-skip" data-tip="이 항목을 건너뛰고 등록 완료로 처리">⏭</button>
           </div>
         </div>
       </div>

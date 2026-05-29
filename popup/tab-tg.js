@@ -238,9 +238,7 @@ async function renderTgTable() {
     tr.append(tdK, tdN, tdS, tdE, tdP);
     tbody.appendChild(tr);
   }
-  $("tg-status").textContent = pageSize === 0
-    ? `누적 ${total}건`
-    : `누적 ${total}건 · 페이지 ${tgPage}/${Math.max(1, Math.ceil(total / pageSize))}`;
+  $("tg-status").textContent = `누적 ${total}건`;
   renderPager($("tg-pager"), total, pageSize, tgPage, (p) => {
     tgPage = p;
     renderTgTable();

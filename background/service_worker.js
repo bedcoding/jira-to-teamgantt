@@ -1,6 +1,6 @@
 // content/teamgantt-bridge.js 가 보내는 TeamGantt fetch payload 를
 // chrome.storage.local 의 tgFetchCache 에 보관.
-// popup [TeamGantt 수집 (API)] 이 이 캐시를 꺼내 upsert 한다.
+// popup [TeamGantt 수집 (API)]이 이 캐시를 꺼내 upsert 한다.
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log("[jira-to-teamgantt] installed/updated");
