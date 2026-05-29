@@ -13,3 +13,6 @@ Thumbs.db
 
 # Internal docs (not for public repo)
 PLAN.md
+
+# Chrome Web Store 업로드용 패키지 (git 추적 안 함)
+*.zip
