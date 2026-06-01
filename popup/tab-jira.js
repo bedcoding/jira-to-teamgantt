@@ -1,4 +1,7 @@
-import { getAll, getSettings, setSettings, upsertJiraIssues, defaultJql, clearJiraIssues } from "../lib/storage.js";
+import {
+  getAll, getSettings, setSettings, upsertJiraIssues, defaultJql, clearJiraIssues,
+  getJiraFetchCache, normalizeJiraFromFetch,
+} from "../lib/storage.js";
 import { checkJiraUrl } from "../lib/selectors.js";
 import { showSnackbar } from "./snackbar.js";
 import { renderPager } from "./pager.js";
@@ -80,7 +83,7 @@ function applyUnitLabels(unit, scopeEl) {
   }
 }
 
-// 현재 [start, end) 를 단위만큼 시프트. delta 가 -1 이면 한 칸 과거, +1 이면 한 칸 미래.
+// 현재 [start, end)를 단위만큼 시프트. delta가 -1이면 한 칸 과거, +1이면 한 칸 미래.
 function shiftRange(unit, start, end, delta) {
   if (!start || !end) return null;
   const s = new Date(start), e = new Date(end);
@@ -138,6 +141,72 @@ async function handleOpenJira() {
   chrome.tabs.create({ url });
 }
 
+// Jira GraphQL fetch 캐시에서 모든 page 응답을 합쳐 normalize → upsert.
+async function handleCollectJiraFetch() {
+  let cache = await getJiraFetchCache();
+  let pages = cache.pages ?? [];
+  if (pages.length === 0) {
+    const [tab] = await chrome.tabs.query({ url: "https://*.atlassian.net/*" });
+    if (!tab) {
+      showSnackbar("Jira 탭이 없습니다. 이슈 목록 페이지를 열어주세요.", {
+        kind: "error",
+        actionLabel: "Jira 열기",
+        onAction: handleOpenJira,
+        duration: 8000,
+      });
+      return;
+    }
+    const ok = confirm(
+      "Jira 페이지 첫 진입은 API로 데이터를 노출하지 않아 수집이 불가능합니다.\n\n"
+      + "Jira 페이지의 [검색] 버튼을 자동으로 클릭해 재조회할까요? (JQL 편집 중이면 그 변경사항이 발사됩니다.)"
+    );
+    if (!ok) return;
+    let trigResp;
+    try {
+      trigResp = await chrome.tabs.sendMessage(tab.id, { type: "TRIGGER_JIRA_SEARCH" });
+    } catch (_e) {
+      showSnackbar("Jira 페이지와 연결이 끊어졌습니다. 페이지를 새로고침해주세요.", { kind: "error", duration: 7000 });
+      return;
+    }
+    if (!trigResp?.ok) {
+      showSnackbar(`[검색] 버튼 자동 클릭 실패: ${trigResp?.error ?? "알 수 없는 에러"}`, { kind: "error", duration: 8000 });
+      return;
+    }
+    // 검색 결과 응답이 들어올 시간을 주고 다시 캐시 확인.
+    await new Promise((r) => setTimeout(r, 1500));
+    cache = await getJiraFetchCache();
+    pages = cache.pages ?? [];
+    if (pages.length === 0) {
+      showSnackbar("재조회 응답 없음: 잠시 뒤 다시 시도해주세요.", { kind: "error", duration: 7000 });
+      return;
+    }
+  }
+  // 모든 page의 issues를 합치되 key 중복 제거.
+  const seen = new Set();
+  const issues = [];
+  let newest = 0;
+  for (const p of pages) {
+    if (p.at > newest) newest = p.at;
+    const normalized = normalizeJiraFromFetch(p.data);
+    for (const it of normalized) {
+      if (seen.has(it.key)) continue;
+      seen.add(it.key);
+      issues.push(it);
+    }
+  }
+  if (issues.length === 0) {
+    showSnackbar("정규화 0건: payload 구조가 예상과 다름.", { kind: "error", duration: 6000 });
+    return;
+  }
+  const ageMin = Math.round((Date.now() - newest) / 60000);
+  const result = await upsertJiraIssues(issues);
+  showSnackbar(
+    `Jira 수집(API): 신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped} · 누적 ${result.total} (캡처 ${ageMin}분 전, ${pages.length}개 응답 합침)`,
+    { kind: "ok", duration: 5000 }
+  );
+  await renderJiraTable();
+}
+
 async function handleCollectJira() {
   const tab = await activeTab();
   const guard = checkJiraUrl(tab?.url);
@@ -151,13 +220,13 @@ async function handleCollectJira() {
   try {
     resp = await chrome.tabs.sendMessage(tab.id, { type: "COLLECT_JIRA" });
   } catch (e) {
-    showSnackbar(`수집 실패: content script 응답 없음 (${e.message}). 페이지를 새로고침해 보세요.`, { kind: "error" });
+    showSnackbar("Jira 페이지와 연결이 끊어졌습니다. 페이지를 새로고침해주세요.", { kind: "error" });
     return;
   }
   if (!resp?.ok) { showSnackbar(`수집 실패: ${resp?.error ?? "unknown"}`, { kind: "error" }); return; }
   const { issues, visibleCount, totalText } = resp.data;
   if (issues.length === 0) {
-    showSnackbar("수집된 이슈가 0건입니다. 페이지 로딩이 끝났는지 확인하세요.", { kind: "error" });
+    showSnackbar("이슈 0건: 페이지 로딩이 끝났는지 확인하세요.", { kind: "error" });
     return;
   }
   const result = await upsertJiraIssues(issues);
@@ -168,18 +237,45 @@ async function handleCollectJira() {
   await renderJiraTable();
 }
 
+// Jira 날짜 포맷(ISO / 한국어)을 "YYYY-MM-DD HH:mm"으로 통일.
+function toReadableDate(s) {
+  if (!s) return "";
+  // ISO 8601
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s;
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return `${y}-${mo}-${dd} ${hh}:${mi}`;
+  }
+  // "2026년 4월 30일 오후 7:17" → 사람이 읽기엔 충분하니 그대로 두되 정렬 키를 위해 ISO 화 시도.
+  const m = s.match(/(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일(?:\s*(오전|오후)\s*(\d{1,2})\s*:\s*(\d{1,2}))?/);
+  if (m) {
+    const [, y, mo, dd, ampm, hRaw, mi] = m;
+    let h = hRaw ? Number(hRaw) : 0;
+    if (ampm === "오후" && h < 12) h += 12;
+    if (ampm === "오전" && h === 12) h = 0;
+    return `${y}-${mo.padStart(2, "0")}-${dd.padStart(2, "0")}${hRaw ? ` ${String(h).padStart(2, "0")}:${(mi ?? "0").padStart(2, "0")}` : ""}`;
+  }
+  return s;
+}
+
 async function renderJiraTable() {
   const { jiraIssues, settings } = await getAll();
   const tbody = document.querySelector("#jira-table tbody");
   tbody.replaceChildren();
-  const list = Object.values(jiraIssues).sort((a, b) => (b.updated ?? "").localeCompare(a.updated ?? ""));
+  // 정렬은 정규화된 키로(같은 포맷이라야 안정적).
+  const list = Object.values(jiraIssues).sort((a, b) => toReadableDate(b.updated).localeCompare(toReadableDate(a.updated)));
   const total = list.length;
   const pageSize = Number(settings.jiraPageSize) || 100;
   const slice = pageSize === 0 ? list : list.slice((jiraPage - 1) * pageSize, jiraPage * pageSize);
   for (const it of slice) {
     const tr = document.createElement("tr");
     const c = (t) => { const td = document.createElement("td"); td.textContent = t ?? ""; return td; };
-    tr.append(c(it.key), c(it.summary), c(it.status), c(it.assignee), c(it.updated));
+    tr.append(c(it.key), c(it.summary), c(it.status), c(it.assignee), c(toReadableDate(it.updated)));
     tbody.appendChild(tr);
   }
   $("jira-status").textContent = `누적 ${total}건`;
@@ -269,7 +365,7 @@ export async function initJiraTab() {
     });
   });
 
-  // 메인 3버튼 클릭 — prev/next 는 현재 범위 기준 시프트, this 는 오늘 기준
+  // 메인 3버튼 클릭 — prev/next는 현재 범위 기준 시프트, this는 오늘 기준
   const currentUnit = () => {
     const active = unitMenu.querySelector("[data-unit].active");
     return active?.dataset.unit ?? "month";
@@ -297,7 +393,7 @@ export async function initJiraTab() {
   $("jira-date-start").addEventListener("change", () => applyDatesToJql($("jira-date-start").value, $("jira-date-end").value));
   $("jira-date-end").addEventListener("change", () => applyDatesToJql($("jira-date-start").value, $("jira-date-end").value));
 
-  // 달력 input 을 어디 클릭해도 picker 열리도록 (Chrome 99+)
+  // 달력 input을 어디 클릭해도 picker 열리도록 (Chrome 99+)
   for (const id of ["jira-date-start", "jira-date-end"]) {
     const el = $(id);
     el.addEventListener("click", () => { try { el.showPicker?.(); } catch {} });
@@ -305,6 +401,7 @@ export async function initJiraTab() {
   }
 
   $("btn-collect-jira").addEventListener("click", handleCollectJira);
+  $("btn-collect-jira-fetch").addEventListener("click", handleCollectJiraFetch);
 
   $("jira-page-size").value = String(s.jiraPageSize ?? 100);
   $("jira-page-size").addEventListener("change", async () => {

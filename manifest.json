@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jira to TeamGantt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Jira와 TeamGantt의 내 작업을 좌우로 나열해 누락을 시각화하고 단축키 한 번으로 TeamGantt에 자동 입력합니다.",
   "permissions": ["storage", "unlimitedStorage", "tabs", "activeTab", "scripting", "downloads", "sidePanel"],
   "host_permissions": [
@@ -45,6 +45,17 @@
       "matches": ["https://*.atlassian.net/issues*"],
       "js": ["content/jira.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.atlassian.net/*"],
+      "js": ["content/jira-fetch-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://*.atlassian.net/*"],
+      "js": ["content/jira-bridge.js"],
+      "run_at": "document_start"
     },
     {
       "matches": ["https://app.teamgantt.com/projects/*"],

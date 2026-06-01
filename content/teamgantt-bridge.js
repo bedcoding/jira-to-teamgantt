@@ -1,5 +1,4 @@
-// TeamGantt 페이지의 isolated content script.
-// MAIN world hook 이 던지는 postMessage 를 받아 background 로 chrome.runtime.sendMessage.
+// TeamGantt isolated content script — MAIN hook의 postMessage를 background로 전달.
 
 window.addEventListener("message", (event) => {
   const msg = event.data;
@@ -26,8 +25,7 @@ function readUrlIds() {
   };
 }
 
-// 현재 viewport 에 마운트된 task 행만 파싱. virtualized 라서 화면 밖 행은 datepicker 가 마운트되지 않아
-// 날짜 input 을 못 찾는다(=null). 그 경우에도 task 자체는 저장하되 source: "dom" 으로 표시한다.
+// viewport에 마운트된 task 행만 파싱(virtualized라 화면 밖은 datepicker null). source: "dom"으로 표시.
 function collectTasksFromDom() {
   const rows = document.querySelectorAll('[data-testid^="row-task-"]');
   const tasks = [];
@@ -58,18 +56,14 @@ function collectTasksFromDom() {
   return tasks;
 }
 
-console.log("[TG-bridge] content script 로드됨, COLLECT_TG_DOM 리스너 등록");
-
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  console.log("[TG-bridge] 메시지 수신:", msg);
   if (msg?.type === "COLLECT_TG_DOM") {
     try {
       const tasks = collectTasksFromDom();
       const { projectId, filteredPersonIds } = readUrlIds();
-      console.log("[TG-bridge] 수집 결과:", { taskCount: tasks.length, projectId, filteredPersonIds });
       sendResponse({ ok: true, data: { tasks, projectId, filteredPersonIds, url: location.href } });
     } catch (e) {
-      console.error("[TG-bridge] 수집 중 에러:", e);
+      console.error("[Jira→TeamGantt][teamgantt-bridge] 수집 중 에러:", e);
       sendResponse({ ok: false, error: String(e?.message ?? e) });
     }
     return true;
@@ -79,7 +73,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const r = injectIntoActiveInput(msg.text ?? "");
       sendResponse(r);
     } catch (e) {
-      console.error("[TG-bridge] 주입 중 에러:", e);
+      console.error("[Jira→TeamGantt][teamgantt-bridge] 주입 중 에러:", e);
       sendResponse({ ok: false, error: String(e?.message ?? e) });
     }
     return true;
@@ -95,7 +89,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return false;
 });
 
-// 디버깅용: 어떤 selector 가 input 을 잡았는지 단계별로 알려준다.
+// 디버깅용: 어떤 selector가 input을 잡았는지 단계별로 알려준다.
 function describeTaskInputDetection() {
   const view = location.pathname.includes("/gantt") ? "gantt" : "list";
   const steps = [];
@@ -146,7 +140,7 @@ function describeInput(el) {
   return `testid=${testid}, placeholder="${ph}"`;
 }
 
-// React 컨트롤드 input 에 값 주입하려면 native value setter 를 거쳐야 React 가 변경을 인식한다.
+// React 컨트롤드 input에 값 주입하려면 native value setter를 거쳐야 React가 변경을 인식한다.
 function setReactInputValue(el, value) {
   const proto = Object.getPrototypeOf(el);
   const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
@@ -164,10 +158,7 @@ function fireEnter(el) {
   }
 }
 
-// TG 의 task 추가용 input 찾기. 우선순위:
-//   1) 현재 포커스가 task 입력창에 잡혀 있으면 그것
-//   2) List 뷰: [data-testid="new-task-name-input"]
-//   3) Gantt 뷰 / List 뷰 공통: placeholder 가 'Add task' 인 input
+// task input 우선순위: 1) activeElement, 2) List 뷰 testid, 3) placeholder="Add task"
 function findActiveTaskInput() {
   const active = document.activeElement;
   if (active && active.tagName === "INPUT" && isLikelyTaskInput(active)) return active;
@@ -195,9 +186,8 @@ function injectIntoActiveInput(text) {
   }
   input.focus();
   setReactInputValue(input, text);
-  // Enter 자동 발화는 안전을 위해 빼둠. 사용자가 직접 Enter 로 저장.
+  // Enter 자동 발화는 안전을 위해 빼둠. 사용자가 직접 Enter로 저장.
   return { ok: true };
 }
 
-// popup → background → "TG_RELOAD_REQUEST" 메시지 처리는 background 에서 chrome.tabs.reload 로 하니
-// 여기선 별도 처리 불필요.
+// TG_RELOAD_REQUEST는 background에서 chrome.tabs.reload로 처리 — 여기선 별도 핸들러 불필요.

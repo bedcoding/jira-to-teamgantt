@@ -1,5 +1,4 @@
-// Jira 이슈 검색 페이지(`/issues?jql=...`)에 주입되어 DOM 을 파싱.
-// popup 에서 chrome.tabs.sendMessage(..., { type: "COLLECT_JIRA" }) 로 호출.
+// Jira 이슈 검색 페이지에 주입되어 DOM을 파싱. popup의 COLLECT_JIRA 메시지에 응답.
 
 const SEL = {
   rows:        'tr[data-testid="native-issue-table.ui.issue-row"]',

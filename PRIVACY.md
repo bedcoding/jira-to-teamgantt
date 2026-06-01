@@ -2,7 +2,7 @@
 
 **최종 업데이트: 2026-05-29**
 
-이 문서는 Chrome 확장 프로그램 **Jira to TeamGantt**(이하 "본 확장") 의
+이 문서는 Chrome 확장 프로그램 **Jira to TeamGantt**(이하 "본 확장")의
 개인정보 처리 방침을 설명합니다.
 
 ## 1. 수집하는 정보
@@ -16,7 +16,7 @@
   (키, 제목, 상태, 담당자, 업데이트 시각, 만든 날짜, 마감일, 우선순위, 라벨)
 - 사용자가 로그인한 TeamGantt 페이지에서 노출되는 작업 정보
   (작업 ID, 제목, 시작일, 종료일, 진행률, 담당자, 프로젝트 ID)
-- 사용자가 본 확장 UI 에서 직접 입력한 설정 값
+- 사용자가 본 확장 UI에서 직접 입력한 설정 값
   (Jira 도메인, JQL, 정규식, 프로젝트/사용자 목록, 단축키 등)
 
 ## 2. 저장 위치
@@ -30,10 +30,10 @@
 
 - **Atlassian Jira** (`https://*.atlassian.net`):
   사용자가 정상적으로 로그인한 상태에서 Jira 페이지를 열 때, 본 확장이 그 페이지 안의
-  공개된 DOM 을 읽습니다. 별도 API 호출이나 데이터 업로드는 없습니다.
+  공개된 DOM을 읽습니다. 별도 API 호출이나 데이터 업로드는 없습니다.
 - **TeamGantt** (`https://app.teamgantt.com`, `https://api.teamgantt.com`):
-  사용자가 TeamGantt 페이지를 열고 TeamGantt 가 직접 요청한 응답을 사용자 브라우저
-  안에서 가로채 캐시합니다. 본 확장이 TeamGantt 에 추가 요청을 보내지 않습니다.
+  사용자가 TeamGantt 페이지를 열고 TeamGantt가 직접 요청한 응답을 사용자 브라우저
+  안에서 가로채 캐시합니다. 본 확장이 TeamGantt에 추가 요청을 보내지 않습니다.
 
 ## 4. 권한 사용 이유
 
@@ -60,6 +60,6 @@
 
 ## 7. 문의
 
-본 방침에 대한 문의는 다음 GitHub 저장소의 Issue 로 남겨주세요.
+본 방침에 대한 문의는 다음 GitHub 저장소의 Issue로 남겨주세요.
 
 https://github.com/bedcoding/jira-to-teamgantt/issues

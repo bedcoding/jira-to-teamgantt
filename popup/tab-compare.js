@@ -74,12 +74,12 @@ function renderTgCellForJiraOnly(tdT, r, confirmed) {
   });
 }
 
-// 단축키 한 번 = 한 행 pending → done 으로 승격되고, 새 행 pending. 둘 다 td 만 갈아끼움.
+// 단축키 한 번 = 한 행 pending → done으로 승격되고, 새 행 pending. 둘 다 td만 갈아끼움.
 // 이렇게 하면 전체 표를 다시 그리지 않아 스크롤·체크박스 깜빡임이 없다.
 async function updateRowsAfterInject(newPendingKey) {
   const q = await getSyncQueue();
-  // 1) 직전 pending 였던 행을 done 으로. q.doneKeys 에 방금 추가됐을 것이다.
-  //    (service_worker 가 doneKeys 에 push 한 직후 SYNC_INJECTED 를 보낸다.)
+  // 1) 직전 pending 였던 행을 done으로. q.doneKeys에 방금 추가됐을 것이다.
+  //    (service_worker가 doneKeys에 push한 직후 SYNC_INJECTED를 보낸다.)
   const justDoneKey = q.doneKeys[q.doneKeys.length - 1];
   if (justDoneKey) {
     const tr = document.querySelector(`#compare-table tr[data-jira-only-key="${cssEscape(justDoneKey)}"]`);
@@ -144,7 +144,7 @@ function renderTgCellPending(tdT, r) {
       await refreshSyncUi();
       tdT.innerHTML = "—";
       tdT.style.color = "#bbb";
-      showSnackbar("입력됨 표시를 해제했습니다. 다음 단축키에서 다시 시도합니다.", { kind: "ok" });
+      showSnackbar("입력됨 해제: 다음 단축키에서 다시 시도하세요.", { kind: "ok" });
     }
   });
 }
@@ -232,8 +232,8 @@ function sortRowsForDisplay(rows, dateSource) {
   });
 }
 
-// 상태 칩으로 'Jira만' 행을 필터.  include 가 비어 있으면 모두 통과.
-// 다른 kind(매칭/고아) 는 영향 없음.
+// 상태 칩으로 'Jira만' 행을 필터. include가 비어 있으면 모두 통과.
+// 다른 kind(매칭/고아)는 영향 없음.
 function applyStatusFilter(rows, includeStatuses) {
   const include = new Set(includeStatuses ?? []);
   if (include.size === 0) return rows;
@@ -243,8 +243,8 @@ function applyStatusFilter(rows, includeStatuses) {
   });
 }
 
-// 종류 칩으로 매칭/매칭 안됨 필터. include 가 비어 있으면 전부 통과.
-// 'jira-only' (Jira 에만 있음) 와 'tg-orphan-*' (TeamGantt 에만 있음) 모두 '매칭 안됨' 으로 묶는다.
+// 종류 칩으로 매칭/매칭 안됨 필터. include가 비어 있으면 전부 통과.
+// 'jira-only'(Jira에만 있음)와 'tg-orphan-*'(TeamGantt에만 있음) 모두 '매칭 안됨'으로 묶는다.
 const KIND_MAP = {
   matched:                "매칭",
   "jira-only":            "매칭 안됨",
@@ -317,7 +317,7 @@ async function renderCompare() {
   });
 }
 
-// 매칭/매칭 안됨/TeamGantt만 3가지 종류 칩 노출. 비어 있으면 전체 ON 으로 본다.
+// 매칭/매칭 안됨/TeamGantt만 3가지 종류 칩 노출. 비어 있으면 전체 ON으로 본다.
 function renderKindChips(includeKinds, counts) {
   const wrap = $("include-kind-chips");
   if (!wrap) return;
@@ -424,7 +424,7 @@ async function refreshSyncUi() {
 }
 
 async function startSync() {
-  // '완료' 버튼 역할: 마지막 pending 을 done 으로 승격 + 큐 종료.
+  // '완료' 버튼 역할: 마지막 pending을 done으로 승격 + 큐 종료.
   const cur = await getSyncQueue();
   if (cur.items.length === 0 && cur.pendingKey) {
     cur.doneKeys.push(cur.pendingKey);
@@ -485,8 +485,8 @@ function prettifyShortcut(s) {
     .trim();
 }
 
-// manifest 의 suggested_key 두 OS 값을 동시에 노출용으로 읽음.
-// chrome.commands 는 현재 OS 단축키만 주므로 manifest 를 직접 읽는다.
+// manifest의 suggested_key 두 OS 값을 동시에 노출용으로 읽음.
+// chrome.commands는 현재 OS 단축키만 주므로 manifest를 직접 읽는다.
 async function getBothOsHotkeys() {
   try {
     const url = chrome.runtime.getURL("manifest.json");
@@ -553,18 +553,18 @@ function humanizeContentError(e) {
 }
 
 async function stopSync() {
-  // 단축키 동작만 멈춤. items 만 비우고 doneKeys/confirmedKeys/pendingKey 는 유지.
-  // 진행 기록(✓ 등록 완료 / ✅ 보정 완료 / 📋 입력됨) 은 다음 [동기화 시작] 까지 보존.
+  // 단축키 동작만 멈춤. items만 비우고 doneKeys/confirmedKeys/pendingKey는 유지.
+  // 진행 기록(✓ 등록 완료 / ✅ 보정 완료 / 📋 입력됨)은 다음 [동기화 시작]까지 보존.
   const q = await getSyncQueue();
   q.items = [];
   await setSyncQueue(q);
   await refreshSyncUi();
-  showSnackbar("단축키 동작을 중지했습니다. 표시된 기록은 그대로 유지됩니다.", { kind: "ok", duration: 3000 });
+  showSnackbar("동기화 중지: 표시된 기록은 유지됩니다.", { kind: "ok", duration: 3000 });
   await renderCompare();
 }
 
-// 현재 큐의 맨 앞 항목을 건너뛰고 등록 완료(✓) 로 승격.
-// 단축키 동작과 동일하게 td 만 부분 갱신해 스크롤·깜빡임을 막는다.
+// 현재 큐의 맨 앞 항목을 건너뛰고 등록 완료(✓)로 승격.
+// 단축키 동작과 동일하게 td만 부분 갱신해 스크롤·깜빡임을 막는다.
 async function skipNext() {
   const q = await getSyncQueue();
   if (q.items.length === 0) {
@@ -610,7 +610,7 @@ export async function initCompareTab() {
   $("btn-prefix-save").addEventListener("click", async () => {
     await setSettings({ prefixRegex: $("prefix-regex").value.trim() });
     closeDialog("prefix-mgr-dialog");
-    showSnackbar("키 추출 규칙 저장됨. 다시 [TeamGantt 수집] 하면 적용됩니다.", { kind: "ok" });
+    showSnackbar("규칙 저장됨: [TeamGantt 수집] 다시 누르면 적용.", { kind: "ok" });
   });
 
   $("compare-search").addEventListener("input", () => renderCompare());
@@ -697,7 +697,7 @@ export async function initCompareTab() {
     else       badge.removeAttribute("data-tip");
   }
 
-  // background 가 주입 결과 알려주면 UI 갱신.
+  // background가 주입 결과 알려주면 UI 갱신.
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === "SYNC_HOTKEY_FIRED") {
       // 단축키 동작 확인용. 큐가 비어있어도 떠야 한다.
@@ -710,7 +710,7 @@ export async function initCompareTab() {
       return;
     }
     if (msg?.type === "SYNC_QUEUE_EMPTY") {
-      showSnackbar("동기화 큐가 비어 있습니다. 비교 탭에서 [동기화 시작]을 눌러주세요.", { kind: "warn" });
+      showSnackbar("큐 비었음: [동기화 시작]을 먼저 누르세요.", { kind: "warn" });
       return;
     }
     if (msg?.type === "SYNC_NO_TG_TAB") {

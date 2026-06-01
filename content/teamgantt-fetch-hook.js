@@ -1,6 +1,4 @@
-// TeamGantt 페이지 컨텍스트(MAIN world)에서 window.fetch 를 가로채
-// `api.teamgantt.com/v1/projects/{id}/children?is_flat_list=true` 응답을
-// window.postMessage 로 흘려보낸다. content script(isolated)가 받아서 background 로 전달.
+// TeamGantt 페이지 MAIN world에서 fetch 후킹 → children 응답을 postMessage로 전달.
 
 (() => {
   if (window.__JT_FETCH_HOOKED__) return;

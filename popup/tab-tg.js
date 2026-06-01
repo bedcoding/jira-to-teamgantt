@@ -103,7 +103,7 @@ async function handleCollectTgFetch() {
   if (!entry) {
     const [tab] = await chrome.tabs.query({ url: "https://app.teamgantt.com/projects/*" });
     if (tab) {
-      showSnackbar("TeamGantt fetch 캐시 비어있음. TeamGantt 탭을 새로고침하면 자동으로 가로채집니다.", {
+      showSnackbar("캐시 없음. TeamGantt 탭을 새로고침하면 자동 캐시됩니다.", {
         kind: "error",
         actionLabel: "새로고침",
         onAction: () => chrome.tabs.reload(tab.id),
@@ -142,7 +142,7 @@ async function handleCollectTgDom() {
   const [tab] = await chrome.tabs.query({ url: "https://app.teamgantt.com/projects/*", active: true, currentWindow: true })
     .then((arr) => arr.length ? arr : chrome.tabs.query({ url: "https://app.teamgantt.com/projects/*" }));
   if (!tab) {
-    showSnackbar("TeamGantt 프로젝트 페이지가 열려있지 않습니다. List 뷰를 먼저 여세요.", {
+    showSnackbar("TeamGantt List 뷰 페이지를 먼저 여세요.", {
       kind: "error", actionLabel: "TeamGantt 열기", onAction: handleOpenTg, duration: 8000,
     });
     return;
@@ -152,7 +152,7 @@ async function handleCollectTgDom() {
   try {
     resp = await chrome.tabs.sendMessage(tab.id, { type: "COLLECT_TG_DOM" });
   } catch (e) {
-    showSnackbar("페이지와 확장 프로그램의 연결이 끊어졌습니다. TeamGantt 페이지를 새로고침 해주세요.",
+    showSnackbar("TeamGantt 페이지와 연결이 끊어졌습니다. 페이지를 새로고침해주세요.",
       { kind: "error", duration: 5000 });
     return;
   }
@@ -163,7 +163,7 @@ async function handleCollectTgDom() {
 
   const { tasks, projectId, filteredPersonIds } = resp.data;
   if (tasks.length === 0) {
-    showSnackbar("화면에 보이는 task 행이 0건입니다. List 뷰가 떠 있고 행이 보이는지 확인하세요.",
+    showSnackbar("task 0건: List 뷰가 떠 있는지 확인하세요.",
       { kind: "error", duration: 6000 });
     return;
   }
@@ -276,7 +276,7 @@ export async function initTgTab() {
   projects = Array.isArray(s.tgProjects) ? s.tgProjects : [];
 
   // JSON textarea 마지막 입력값 복원.
-  // value="" 도 placeholder 는 정상 표시되지만, 명시적 빈 문자열을 굳이 박지 않아도 결과는 같으므로 truthy 만 set.
+  // value=""도 placeholder는 정상 표시되지만, 명시적 빈 문자열을 굳이 박지 않아도 결과는 같으므로 truthy만 set.
   if (s.personJsonDraft) $("person-json").value = s.personJsonDraft;
   if (s.projectJsonDraft) $("project-json").value = s.projectJsonDraft;
 

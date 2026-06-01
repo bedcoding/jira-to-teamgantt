@@ -94,7 +94,7 @@ function currentSource() {
 
 function inRange(dateStr, start, end) {
   if (!dateStr) return false;
-  // start <= date < end (end 는 다음달 1일이라 exclusive)
+  // start <= date < end (end는 다음달 1일이라 exclusive)
   return dateStr >= start && dateStr < end;
 }
 
