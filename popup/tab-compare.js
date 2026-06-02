@@ -385,7 +385,8 @@ async function refreshSyncUi() {
     progressFill.classList.toggle("complete", tot > 0 && cur >= tot);
   };
 
-  if (remaining === 0 && done === 0 && pendingCount === 0) {
+  // done > 0 이어도 큐가 비면 idle 로. ✓/✅ 표시는 doneKeys 가 살아있어 유지.
+  if (remaining === 0 && pendingCount === 0) {
     info.textContent = "";
     startBtn.textContent = "동기화 시작";
     startBtn.classList.remove("hidden");
@@ -396,15 +397,6 @@ async function refreshSyncUi() {
     return;
   }
   statusLine.classList.remove("hidden");
-  if (remaining === 0 && pendingCount === 0) {
-    info.textContent = `완료 ${done}건`;
-    startBtn.textContent = "다시 시작";
-    startBtn.classList.remove("hidden");
-    stopBtn.classList.add("hidden");
-    next.classList.add("hidden");
-    setProgress(done, done);
-    return;
-  }
   if (remaining === 0 && pendingCount === 1) {
     // 마지막 항목이 pending — '저장 완료' 명시적 확정 필요.
     info.textContent = `진행 ${done} / ${total} · 마지막 항목 입력됨 (Enter 후 [완료] 버튼)`;
@@ -456,9 +448,10 @@ async function startSync() {
   }
   await setSyncQueue({ items, pendingKey: null, doneKeys: [], confirmedKeys: [] });
   await refreshSyncUi();
+  await renderCompare();
   const hk = await getHotkeyLabel();
   showSnackbar(
-    `동기화 시작 (${items.length}건)\nTeamGantt 페이지에서 [추가] 버튼을 누른 뒤 ${hk} 를 누르면 다음 작업이 입력됩니다.`,
+    `동기화 시작: TeamGantt 페이지 입력창에서 단축키(${hk})를 누르면 작업이 입력됩니다.`,
     { kind: "ok", duration: 5000 },
   );
 }
@@ -559,7 +552,7 @@ async function stopSync() {
   q.items = [];
   await setSyncQueue(q);
   await refreshSyncUi();
-  showSnackbar("동기화 중지: 표시된 기록은 유지됩니다.", { kind: "ok", duration: 3000 });
+  showSnackbar("동기화 중지: 간트 탭에서 다시 갱신해주세요.", { kind: "ok", duration: 3000 });
   await renderCompare();
 }
 
