@@ -1,6 +1,6 @@
 import { initJiraTab } from "./tab-jira.js";
 import { initTgTab } from "./tab-tg.js";
-import { initCompareTab } from "./tab-compare.js";
+import { initCompareTab, refreshCompareTab } from "./tab-compare.js";
 import { initReportTab } from "./tab-report.js";
 import { saveBackup, loadBackup } from "./backup.js";
 import { getSettings, setSettings } from "../lib/storage.js";
@@ -50,6 +50,9 @@ async function routeTabs() {
       spawnInk(btn, e);
       activate(target, btns, panels, { animate: true });
       await setSettings({ activeTab: target });
+      // 비교 탭은 Jira/TG 두 출처를 다 표시하므로, 다른 탭에서 수집한 결과를
+      // 사이드 패널을 닫았다 켜지 않아도 즉시 보이도록 진입 시점에 강제 재렌더.
+      if (target === "compare") await refreshCompareTab();
     });
   });
 }

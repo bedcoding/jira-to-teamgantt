@@ -595,6 +595,10 @@ function wireDialogClose(id) {
   dlg.addEventListener("click", (e) => { if (e.target === dlg) closeDialog(id); });
 }
 
+export async function refreshCompareTab() {
+  await renderCompare();
+}
+
 export async function initCompareTab() {
   const s = await getSettings();
   $("prefix-regex").value = s.prefixRegex ?? "";

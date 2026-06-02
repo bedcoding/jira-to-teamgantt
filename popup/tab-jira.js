@@ -146,7 +146,12 @@ async function handleCollectJiraFetch() {
   let cache = await getJiraFetchCache();
   let pages = cache.pages ?? [];
   if (pages.length === 0) {
-    const [tab] = await chrome.tabs.query({ url: "https://*.atlassian.net/*" });
+    // 사이드 패널이 열려 있어도 chrome.tabs.query 결과 첫 번째가 비활성 탭일 수 있어
+    // 현재 활성 Jira 탭을 우선 잡고, 없을 때만 임의의 Jira 탭으로 폴백.
+    let [tab] = await chrome.tabs.query({ url: "https://*.atlassian.net/*", active: true, currentWindow: true });
+    if (!tab) {
+      [tab] = await chrome.tabs.query({ url: "https://*.atlassian.net/*" });
+    }
     if (!tab) {
       showSnackbar("Jira 탭이 없습니다. 이슈 목록 페이지를 열어주세요.", {
         kind: "error",
@@ -164,20 +169,31 @@ async function handleCollectJiraFetch() {
     let trigResp;
     try {
       trigResp = await chrome.tabs.sendMessage(tab.id, { type: "TRIGGER_JIRA_SEARCH" });
-    } catch (_e) {
-      showSnackbar("Jira 페이지와 연결이 끊어졌습니다. 페이지를 새로고침해주세요.", { kind: "error", duration: 7000 });
+    } catch (e) {
+      console.warn("[Jira→TeamGantt] TRIGGER_JIRA_SEARCH sendMessage 실패:", e, "tab:", tab.url);
+      showSnackbar(
+        "Jira 페이지의 확장 스크립트가 깨어있지 않습니다. Jira 탭을 한 번 새로고침(F5) 후 다시 시도해주세요.",
+        { kind: "error", duration: 8000 }
+      );
       return;
     }
     if (!trigResp?.ok) {
       showSnackbar(`[검색] 버튼 자동 클릭 실패: ${trigResp?.error ?? "알 수 없는 에러"}`, { kind: "error", duration: 8000 });
       return;
     }
-    // 검색 결과 응답이 들어올 시간을 주고 다시 캐시 확인.
-    await new Promise((r) => setTimeout(r, 1500));
-    cache = await getJiraFetchCache();
-    pages = cache.pages ?? [];
+    // 검색 결과 GraphQL이 들어오는지 폴링. 네트워크가 느린 환경에서 1.5초로는 부족할 수 있어 최대 5초.
+    const start = Date.now();
+    while (Date.now() - start < 5000) {
+      await new Promise((r) => setTimeout(r, 250));
+      cache = await getJiraFetchCache();
+      pages = cache.pages ?? [];
+      if (pages.length > 0) break;
+    }
     if (pages.length === 0) {
-      showSnackbar("재조회 응답 없음: 잠시 뒤 다시 시도해주세요.", { kind: "error", duration: 7000 });
+      showSnackbar(
+        "[검색] 버튼은 눌렸지만 5초 안에 GraphQL 응답이 잡히지 않았습니다. 페이지를 새로고침 후 다시 시도해주세요.",
+        { kind: "error", duration: 8000 }
+      );
       return;
     }
   }
