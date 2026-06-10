@@ -329,7 +329,7 @@ function renderKindChips(includeKinds, counts) {
   wrap.innerHTML = KINDS.map(({ key, count }) => {
     const on = include.size === 0 || include.has(key);
     return `<button class="status-chip ${on ? "on" : "off"}" data-kind="${escapeHtml(key)}">${escapeHtml(key)} ${count}</button>`;
-  }).join("") + `<button class="status-chip-clear" data-tip="모든 종류 표시(=필터 해제)">전체</button>`;
+  }).join("") + `<button class="status-chip-clear" data-tip="모든 종류 표시">전체</button>`;
 }
 
 // 'Jira만' 행에 등장하는 상태들만 칩으로 노출. 사용자가 클릭하면 토글 후 저장 + 재렌더.
@@ -353,7 +353,7 @@ async function renderStatusChips(jiraIssues, includeStatuses) {
   wrap.innerHTML = statuses.map((s) => {
     const on = include.size === 0 || include.has(s);
     return `<button class="status-chip ${on ? "on" : "off"}" data-status="${escapeHtml(s)}">${escapeHtml(s)}</button>`;
-  }).join("") + `<button class="status-chip-clear" data-tip="모든 상태 포함(=필터 해제)">전체</button>`;
+  }).join("") + `<button class="status-chip-clear" data-tip="모든 상태 포함">전체</button>`;
 }
 
 function buildQueueFromJiraOnly(rows, includeStatuses) {
@@ -446,6 +446,16 @@ async function startSync() {
     showSnackbar("등록할 'Jira만' 행이 없습니다.", { kind: "warn" });
     return;
   }
+  // 단축키가 해제된 상태로 시작하면 아무 키도 안 먹는 헛수고가 되므로 먼저 막는다.
+  if (!(await getAssignedHotkey())) {
+    await renderHotkeyBadge();
+    chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
+    showSnackbar(
+      "chrome://extensions/shortcuts 페이지에서 단축키를 지정해주세요.",
+      { kind: "warn", duration: 6000 },
+    );
+    return;
+  }
   await setSyncQueue({ items, pendingKey: null, doneKeys: [], confirmedKeys: [] });
   await refreshSyncUi();
   await renderCompare();
@@ -456,15 +466,36 @@ async function startSync() {
   );
 }
 
-// chrome.commands 에서 현재 OS 단축키. ⇧⌘ 같은 기호 대신 풀어 표기.
-// 사용자가 chrome://extensions/shortcuts 에서 바꿔도 자동 반영.
-async function getHotkeyLabel() {
+// 실제 Chrome에 할당된 단축키. 확장 재로드/충돌로 해제되면 빈 문자열이 오므로 null 반환.
+// manifest의 suggested_key는 설치 시점 제안일 뿐 실제 할당과 다를 수 있다.
+async function getAssignedHotkey() {
   try {
     const cmds = await chrome.commands.getAll();
     const c = cmds.find((x) => x.name === "inject-next-task");
     if (c?.shortcut) return prettifyShortcut(c.shortcut);
   } catch {}
-  return "단축키";
+  return null;
+}
+
+async function getHotkeyLabel() {
+  return (await getAssignedHotkey()) ?? "단축키";
+}
+
+// sync-bar 우측 배지. 할당된 실제 키를 표시하고, 미할당이면 경고로 바꿔
+// 클릭 시 Chrome 단축키 설정 페이지를 연다.
+async function renderHotkeyBadge() {
+  const badge = $("hotkey-badge");
+  if (!badge) return;
+  const assigned = await getAssignedHotkey();
+  if (assigned) {
+    badge.classList.remove("unset");
+    badge.innerHTML = `<span class="hotkey-label">동기화 단축키:</span> <span class="hotkey-keys">${escapeHtml(assigned)}</span>`;
+    badge.setAttribute("data-tip", "작업 입력 단축키. chrome://extensions/shortcuts 에서 변경할 수 있습니다.");
+  } else {
+    badge.classList.add("unset");
+    badge.innerHTML = `<span class="hotkey-keys">⚠ 단축키 미설정(설정하기)</span>`;
+    badge.setAttribute("data-tip", "클릭해서 단축키를 설정해주세요");
+  }
 }
 
 // "⇧⌘X" 같은 Mac 기호를 "Cmd+Shift+X" 로 풀어 씀. 이미 "Ctrl+..." 처럼
@@ -476,22 +507,6 @@ function prettifyShortcut(s) {
     .replace(/⇧/g, "Shift+")
     .replace(/⌘/g, "Cmd+")
     .trim();
-}
-
-// manifest의 suggested_key 두 OS 값을 동시에 노출용으로 읽음.
-// chrome.commands는 현재 OS 단축키만 주므로 manifest를 직접 읽는다.
-async function getBothOsHotkeys() {
-  try {
-    const url = chrome.runtime.getURL("manifest.json");
-    const m = await (await fetch(url)).json();
-    const sk = m.commands?.["inject-next-task"]?.suggested_key ?? {};
-    return {
-      mac: prettifyShortcut(sk.mac ?? sk.default ?? ""),
-      win: prettifyShortcut(sk.default ?? ""),
-    };
-  } catch {
-    return { mac: "", win: "" };
-  }
 }
 
 async function detectTaskInput() {
@@ -590,6 +605,7 @@ function wireDialogClose(id) {
 
 export async function refreshCompareTab() {
   await renderCompare();
+  await renderHotkeyBadge();
 }
 
 export async function initCompareTab() {
@@ -681,18 +697,15 @@ export async function initCompareTab() {
     `TeamGantt의 입력창이 떠 있는 상태에서 단축키를 누르면 Jira에만 있는 작업들을 TeamGantt에 자동 입력합니다.\n\n사용법:\n1. [동기화 시작] 클릭\n2. TeamGantt 페이지에서 (+) 버튼을 눌러서 입력창 띄우기\n3. 단축키를 누르면 누락된 항목이 자동으로 입력창에 박힘\n4. 입력창에서 포커스가 사라지면 TeamGantt에 저장`,
   );
 
-  // sync-bar 우측 끝에 현재 OS 단축키만 작게 표시. 호버 툴팁에 다른 OS 키 안내.
-  const { mac, win } = await getBothOsHotkeys();
-  const badge = $("hotkey-badge");
-  if (badge && (mac || win)) {
-    const isMac = /Mac/i.test(navigator.userAgentData?.platform ?? navigator.platform ?? "");
-    const my    = isMac ? mac : win;
-    const other = isMac ? win : mac;
-    const otherLabel = isMac ? "윈도우" : "맥";
-    badge.innerHTML = `<span class="hotkey-label">동기화 단축키:</span> <span class="hotkey-keys">${escapeHtml(my || "-")}</span>`;
-    if (other) badge.setAttribute("data-tip", `${otherLabel}: ${other}`);
-    else       badge.removeAttribute("data-tip");
-  }
+  // sync-bar 우측 끝에 실제 할당된 단축키 표시. 미할당이면 경고 배지.
+  await renderHotkeyBadge();
+  $("hotkey-badge")?.addEventListener("click", () => {
+    if ($("hotkey-badge").classList.contains("unset")) {
+      chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
+    }
+  });
+  // 설정 페이지에서 단축키를 지정하고 돌아오는 경우를 잡기 위해 탭 전환 시 재확인.
+  chrome.tabs.onActivated.addListener(() => { renderHotkeyBadge(); });
 
   // background가 주입 결과 알려주면 UI 갱신.
   chrome.runtime.onMessage.addListener((msg) => {

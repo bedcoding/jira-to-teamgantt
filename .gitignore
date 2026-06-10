@@ -7,6 +7,9 @@ Thumbs.db
 .idea/
 *.swp
 
+# Claude Code
+.claude/
+
 # Logs / temp
 *.log
 *.tmp

@@ -1256,6 +1256,20 @@ input[type="text"][readonly]:hover {
   color: #475569;
   font-weight: 600;
 }
+/* 배지는 sync-bar 우측 끝 — 툴팁이 패널 우측을 넘지 않게 우측 기준으로 펼친다. */
+.hotkey-badge[data-tip]:not([data-tip=""])::after {
+  left: auto;
+  right: 0;
+}
+.hotkey-badge.unset {
+  cursor: pointer;
+}
+.hotkey-badge.unset .hotkey-keys {
+  color: #dc2626;
+}
+.hotkey-badge.unset:hover .hotkey-keys {
+  text-decoration: underline;
+}
 .sync-pending-mark {
   color: #d97706;
   font-weight: 600;

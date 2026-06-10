@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jira to TeamGantt",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Jira와 TeamGantt의 내 작업을 좌우로 나열해 누락을 시각화하고 단축키 한 번으로 TeamGantt에 자동 입력합니다.",
   "permissions": ["storage", "unlimitedStorage", "tabs", "activeTab", "scripting", "downloads", "sidePanel"],
   "host_permissions": [
