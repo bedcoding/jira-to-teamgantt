@@ -554,7 +554,7 @@ button.small { padding: 3px 8px; font-size: 11px; }
   margin: 6px 0 2px;
 }
 /* URL은 toolbar 안에서 flex:1로 늘어나므로 폭은 인라인 스타일이 관리. 텍스트 잘림 방지만. */
-#project-mgr-url {
+#project-mgr-url, #person-mgr-url {
   text-overflow: ellipsis;
 }
 

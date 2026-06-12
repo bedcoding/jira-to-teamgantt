@@ -402,9 +402,11 @@ export async function initTgTab() {
     const tabs = await chrome.tabs.query({ url: "https://app.teamgantt.com/*" });
     const tab = tabs.find((t) => t.active) ?? tabs[0];
     if (!tab) {
+      // 열려 있는 모달의 URL 칸 값을 쓰되, 비어 있으면 홈으로 폴백.
+      const openUrl = $("project-mgr-url").value || $("person-mgr-url").value || "https://app.teamgantt.com/";
       showSnackbar("TeamGantt 탭이 없습니다. 프로젝트 페이지를 먼저 열어주세요.", {
         kind: "error", actionLabel: "TeamGantt 열기",
-        onAction: () => chrome.tabs.create({ url: $("project-mgr-url").value || "https://app.teamgantt.com/" }),
+        onAction: () => chrome.tabs.create({ url: openUrl }),
         duration: 8000,
       });
       return null;
@@ -602,9 +604,15 @@ export async function initTgTab() {
   initModalTabs("project-mgr-dialog");
   initModalTabs("person-mgr-dialog");
 
-  $("btn-open-person-mgr").addEventListener("click", () => {
+  $("btn-open-person-mgr").addEventListener("click", async () => {
+    const cur = await getSettings();
+    $("person-mgr-url").value = buildTgListUrl(cur) ?? "https://app.teamgantt.com/";
     selectModalTab("person-mgr-dialog", "api"); // 열 때마다 주력인 API 자동 탭으로 시작
     openDialog("person-mgr-dialog");
+  });
+  $("person-mgr-url").addEventListener("click", () => {
+    const v = $("person-mgr-url").value;
+    if (v) chrome.tabs.create({ url: v });
   });
   $("btn-open-project-mgr").addEventListener("click", async () => {
     // 프로젝트/사용자 미설정(부트스트랩) 상태면 홈으로 폴백 — 아무 프로젝트나 열면 훅이 동작한다.

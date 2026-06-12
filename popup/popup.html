@@ -280,8 +280,10 @@
 
         <!-- API 자동 -->
         <div class="modal-panel" data-ppanel="api">
-          <p class="panel-hint">TeamGantt 탭이 열려 있으면 [API 추출]을 누르세요. 결과가 아래 박스에 채워지면 [병합 적용] 또는 [덮어쓰기 적용]으로 반영합니다.</p>
+          <p class="panel-hint">TeamGantt 탭이 열려 있으면 [API 추출]을 누르세요. 결과가 아래 박스에 채워지면 [병합 적용] 또는 [덮어쓰기 적용]으로 반영합니다. 탭이 없으면 아래 URL로 먼저 여세요.</p>
+          <!-- URL(클릭 시 이동)과 [API 추출]을 한 줄로. URL은 늘이고 버튼은 우측 고정폭. -->
           <div class="toolbar">
+            <input type="text" id="person-mgr-url" readonly title="클릭하면 TeamGantt로 이동" style="flex:1; min-width:0; height:25px" />
             <button id="btn-person-fetch-api" class="primary" style="flex:none; height:25px">API 추출</button>
           </div>
           <textarea id="person-api-json" rows="4" placeholder="여기에 추출된 사용자 목록이 표시됩니다. [API 추출]을 먼저 누르세요."></textarea>
