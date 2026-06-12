@@ -19,9 +19,13 @@ function dedupe(items) {
 
 function parsePresetJson(raw) {
   const data = JSON.parse(raw);
-  if (!Array.isArray(data)) throw new Error("JSON 최상위가 배열이어야 합니다.");
+  // 도움말의 "응답 통째로 붙여넣기"를 실제로 지원: {projects:[...]}/{people:[...]} 래퍼도 수용.
+  const arr = Array.isArray(data) ? data
+    : (Array.isArray(data?.projects) ? data.projects
+    : (Array.isArray(data?.people) ? data.people : null));
+  if (!arr) throw new Error("JSON 최상위가 배열이거나 projects/people 배열을 포함해야 합니다.");
   const out = [];
-  for (const item of data) {
+  for (const item of arr) {
     if (item == null || typeof item !== "object") continue;
     const id = Number(item.id);
     const name = String(item.name ?? "").trim();
@@ -279,6 +283,7 @@ export async function initTgTab() {
   // value=""도 placeholder는 정상 표시되지만, 명시적 빈 문자열을 굳이 박지 않아도 결과는 같으므로 truthy만 set.
   if (s.personJsonDraft) $("person-json").value = s.personJsonDraft;
   if (s.projectJsonDraft) $("project-json").value = s.projectJsonDraft;
+  if (s.projectApiDraft) $("project-api-json").value = s.projectApiDraft;
 
   const savePersonDraft = debounce(async () => {
     await setSettings({ personJsonDraft: $("person-json").value });
@@ -286,8 +291,12 @@ export async function initTgTab() {
   const saveProjectDraft = debounce(async () => {
     await setSettings({ projectJsonDraft: $("project-json").value });
   }, 400);
+  const saveProjectApiDraft = debounce(async () => {
+    await setSettings({ projectApiDraft: $("project-api-json").value });
+  }, 400);
   $("person-json").addEventListener("input", savePersonDraft);
   $("project-json").addEventListener("input", saveProjectDraft);
+  $("project-api-json").addEventListener("input", saveProjectApiDraft);
 
   refreshUI();
   elMyId.value = s.tgMyId ?? "";
@@ -377,6 +386,108 @@ export async function initTgTab() {
     showSnackbar("프로젝트 목록 전체 삭제");
   });
 
+  // ── 프로젝트 목록 자동 조회 (API 추출) ──
+  // 흐름: 열린 TG 탭의 MAIN 훅에서 Authorization 토큰만 받아오고(content script 경유),
+  // 실제 /v1/projects/all 호출은 사이드패널이 직접 한다. host_permissions(api.teamgantt.com)
+  // 덕에 확장 컨텍스트 발 요청은 CORS가 면제되지만, MAIN(페이지) 컨텍스트 발은 막힌다.
+  const PROJECTS_URL = "https://api.teamgantt.com/v1/projects/all?fields[]=id&fields[]=name&status=active";
+
+  function extractProjectList(data) {
+    // 응답이 최상위 배열이든 {projects:[...]} 래퍼든 수용 (normalizeTgFromFetch와 같은 방어 패턴).
+    const raw = Array.isArray(data) ? data
+      : (Array.isArray(data?.projects) ? data.projects : []);
+    return raw
+      .map((p) => ({ id: Number(p?.id), name: String(p?.name ?? "").trim() }))
+      .filter((p) => Number.isFinite(p.id) && p.name);
+  }
+
+  let tgProjectsBusy = false; // 버튼 연타 가드
+
+  async function handleFetchProjectsApi() {
+    if (tgProjectsBusy) return;
+    tgProjectsBusy = true;
+    const btn = $("btn-project-fetch-api");
+    btn.disabled = true;
+    btn.classList.add("is-loading"); // 텍스트는 유지하고 스피너만 표시 (폭 안 흔들림)
+    try {
+      const tabs = await chrome.tabs.query({ url: "https://app.teamgantt.com/*" });
+      const tab = tabs.find((t) => t.active) ?? tabs[0];
+      if (!tab) {
+        showSnackbar("TeamGantt 탭이 없습니다. 프로젝트 페이지를 먼저 열어주세요.", {
+          kind: "error",
+          actionLabel: "TeamGantt 열기",
+          onAction: () => chrome.tabs.create({ url: $("project-mgr-url").value }),
+          duration: 8000,
+        });
+        return;
+      }
+
+      // 1) MAIN 훅에서 Authorization 토큰 받기.
+      let tokenResp;
+      try {
+        tokenResp = await chrome.tabs.sendMessage(tab.id, { type: "GET_TG_TOKEN" });
+      } catch (_e) {
+        showSnackbar("TeamGantt 페이지와 연결이 끊겼습니다. 확장 갱신 후 그 페이지를 새로고침(F5)해주세요.", {
+          kind: "error", actionLabel: "새로고침", onAction: () => chrome.tabs.reload(tab.id), duration: 8000,
+        });
+        return;
+      }
+      const auth = tokenResp?.auth;
+      if (!auth) {
+        showSnackbar("인증 토큰을 아직 못 잡았습니다. TeamGantt 탭을 새로고침하면 토큰이 잡힙니다.", {
+          kind: "error", actionLabel: "새로고침", onAction: () => chrome.tabs.reload(tab.id), duration: 8000,
+        });
+        return;
+      }
+
+      // 2) 사이드패널에서 직접 호출 (CORS 면제).
+      let res;
+      try {
+        res = await fetch(PROJECTS_URL, { headers: { authorization: auth } });
+      } catch (e) {
+        showSnackbar(`네트워크 오류: ${e?.message ?? e}`, { kind: "error", duration: 6000 });
+        return;
+      }
+      if (!res.ok) {
+        showSnackbar(`프로젝트 조회 실패 (HTTP ${res.status}). 토큰 만료면 TeamGantt 탭을 새로고침하세요.`, {
+          kind: "error", actionLabel: "새로고침", onAction: () => chrome.tabs.reload(tab.id), duration: 8000,
+        });
+        return;
+      }
+      const data = await res.json();
+      const list = extractProjectList(data);
+      if (list.length === 0) {
+        showSnackbar("응답에 프로젝트가 없습니다. (구조가 예상과 다름)", { kind: "error", duration: 6000 });
+        return;
+      }
+      const json = JSON.stringify(list, null, 2);
+      $("project-api-json").value = json;
+      await setSettings({ projectApiDraft: json }); // .value 할당은 input 이벤트를 안 띄우므로 직접 저장
+      showSnackbar(`프로젝트 ${list.length}건 추출됨 — [병합 적용] 또는 [덮어쓰기 적용]을 누르세요.`, { kind: "ok", duration: 6000 });
+    } catch (e) {
+      showSnackbar(`프로젝트 추출 실패: ${e?.message ?? e}`, { kind: "error", duration: 6000 });
+    } finally {
+      tgProjectsBusy = false;
+      btn.disabled = false;
+      btn.classList.remove("is-loading");
+    }
+  }
+
+  $("btn-project-fetch-api").addEventListener("click", handleFetchProjectsApi);
+  $("btn-project-api-merge").addEventListener("click", async () => {
+    const next = await applyJson("tgProjects", projects, $("project-api-json").value, "merge");
+    if (next) { projects = next; refreshUI(); showSnackbar(`프로젝트 병합 (총 ${next.length}개)`); }
+  });
+  $("btn-project-api-replace").addEventListener("click", async () => {
+    if (!confirm("기존 프로젝트 목록을 모두 덮어씁니다. 진행할까요?")) return;
+    const next = await applyJson("tgProjects", projects, $("project-api-json").value, "replace");
+    if (next) { projects = next; refreshUI(); showSnackbar(`프로젝트 덮어쓰기 (총 ${next.length}개)`); }
+  });
+  $("project-mgr-url").addEventListener("click", () => {
+    const v = $("project-mgr-url").value;
+    if (v) chrome.tabs.create({ url: v });
+  });
+
   $("btn-collect-tg-fetch").addEventListener("click", handleCollectTgFetch);
   $("btn-collect-tg-dom").addEventListener("click", handleCollectTgDom);
 
@@ -399,8 +510,28 @@ export async function initTgTab() {
   function openDialog(id) { $(id).classList.remove("hidden"); }
   function closeDialog(id) { $(id).classList.add("hidden"); }
 
+  // 모달 내부 입력방식 탭(API 자동 / JSON / 1줄 추가) 전환.
+  function selectModalTab(dialogId, key) {
+    const dlg = $(dialogId);
+    for (const t of dlg.querySelectorAll(".modal-tab"))
+      t.classList.toggle("active", t.dataset.ptab === key);
+    for (const p of dlg.querySelectorAll(".modal-panel"))
+      p.classList.toggle("hidden", p.dataset.ppanel !== key);
+  }
+  function initModalTabs(dialogId) {
+    for (const tab of $(dialogId).querySelectorAll(".modal-tab"))
+      tab.addEventListener("click", () => selectModalTab(dialogId, tab.dataset.ptab));
+  }
+  initModalTabs("project-mgr-dialog");
+
   $("btn-open-person-mgr").addEventListener("click", () => openDialog("person-mgr-dialog"));
-  $("btn-open-project-mgr").addEventListener("click", () => openDialog("project-mgr-dialog"));
+  $("btn-open-project-mgr").addEventListener("click", async () => {
+    // 프로젝트/사용자 미설정(부트스트랩) 상태면 홈으로 폴백 — 아무 프로젝트나 열면 훅이 동작한다.
+    const cur = await getSettings();
+    $("project-mgr-url").value = buildTgListUrl(cur) ?? "https://app.teamgantt.com/";
+    selectModalTab("project-mgr-dialog", "api"); // 열 때마다 주력인 API 자동 탭으로 시작
+    openDialog("project-mgr-dialog");
+  });
 
   for (const id of ["person-mgr-dialog", "project-mgr-dialog"]) {
     const dlg = $(id);

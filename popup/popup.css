@@ -480,12 +480,83 @@ button.primary {
 
 button.primary:hover { background: #0747a6; }
 
+/* 로딩 중: 텍스트는 투명 처리(자리·폭 유지)하고, 버튼을 flex로 만들어 스피너를 정중앙 배치.
+   flex 중앙 정렬은 회전 transform과 분리돼 어떤 버튼 높이에서도 마법숫자 없이 정확히 중앙. */
+button.is-loading {
+  pointer-events: none;
+  color: transparent;
+  position: relative;
+}
+button.is-loading::before {
+  content: "";
+  position: absolute;
+  inset: 0;            /* 버튼 전체를 덮는 레이어 */
+  margin: auto;        /* 그 안에서 12x12를 상하좌우 자동 중앙 */
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 600ms linear infinite;
+}
+
+@keyframes btn-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
 button.danger {
   color: #c00;
   border-color: #d99;
 }
 
 button.danger:hover { background: #fdd; }
+
+button.small { padding: 3px 8px; font-size: 11px; }
+
+/* 모달 내부 입력방식 탭 (API 자동 / JSON / 1줄 추가) — 메인 탭보다 작은 언더라인 스타일 */
+.modal-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 12px 0 10px;
+  border-bottom: 1px solid #e5e8ec;
+}
+.modal-tab {
+  flex: 1;
+  padding: 7px 8px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: #666;
+  font-size: 12px;
+  border-radius: 0;
+  cursor: pointer;
+}
+.modal-tab:hover { background: #f4f6f8; color: #333; }
+.modal-tab.active {
+  color: #0747a6;
+  font-weight: 600;
+  border-bottom-color: #0747a6;
+  background: transparent;
+}
+
+.modal-panel.hidden { display: none; }
+.panel-hint {
+  margin: 0 0 8px;
+  color: #888;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.modal-clear-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 6px 0 2px;
+}
+/* URL은 toolbar 안에서 flex:1로 늘어나므로 폭은 인라인 스타일이 관리. 텍스트 잘림 방지만. */
+#project-mgr-url {
+  text-overflow: ellipsis;
+}
 
 input[type="text"], input[type="search"], input[type="date"], textarea, select {
   padding: 4px 6px;
@@ -508,7 +579,6 @@ textarea { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 
 input::placeholder, textarea::placeholder {
   color: #c0c4c9;
-  font-style: italic;
 }
 
 .status {

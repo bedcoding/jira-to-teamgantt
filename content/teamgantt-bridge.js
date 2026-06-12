@@ -1,15 +1,24 @@
 // TeamGantt isolated content script — MAIN hook의 postMessage를 background로 전달.
 
+// popup [API 추출]의 토큰 요청-응답을 잇는 보류 맵. reqId → sendResponse 콜백.
+let tgReqSeq = 0;
+const tgPending = new Map();
+
 window.addEventListener("message", (event) => {
+  if (event.source !== window) return; // iframe 등 다른 window발 위조 메시지 차단
   const msg = event.data;
   if (!msg || msg.__jiraTg !== true) return;
   if (msg.type === "TG_CHILDREN_PAYLOAD") {
     chrome.runtime.sendMessage({
-      type: "TG_CHILDREN_PAYLOAD",
+      type: msg.type,
       url: msg.url,
       data: msg.data,
       at: msg.at,
     }).catch(() => {});
+  } else if (msg.type === "TG_TOKEN_RESULT") {
+    // MAIN hook이 돌려준 Authorization 토큰 → 대기 중인 popup 응답으로 전달.
+    const resolve = tgPending.get(msg.reqId);
+    if (resolve) { tgPending.delete(msg.reqId); resolve(msg); }
   } else if (msg.type === "TG_HOOK_READY") {
     chrome.runtime.sendMessage({ type: "TG_HOOK_READY" }).catch(() => {});
   }
@@ -85,6 +94,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: false, error: String(e?.message ?? e) });
     }
     return true;
+  }
+  if (msg?.type === "GET_TG_TOKEN") {
+    // MAIN world 훅에게 Authorization 토큰을 요청하고, 돌아오면 그대로 popup에 응답.
+    const reqId = ++tgReqSeq;
+    tgPending.set(reqId, sendResponse);
+    window.postMessage({ __jiraTg: true, type: "TG_TOKEN_REQUEST", reqId }, "*");
+    // 안전망: 3초 내 응답 없으면 타임아웃(훅 미주입일 수 있음).
+    setTimeout(() => {
+      if (tgPending.has(reqId)) {
+        tgPending.delete(reqId);
+        sendResponse({ ok: false, error: "훅 응답 없음" });
+      }
+    }, 3000);
+    return true; // async sendResponse
   }
   return false;
 });

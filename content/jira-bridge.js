@@ -1,6 +1,7 @@
 // Jira 페이지 isolated content script — MAIN hook의 postMessage를 background로 전달.
 
 window.addEventListener("message", (event) => {
+  if (event.source !== window) return; // iframe 등 다른 window발 위조 메시지 차단
   const msg = event.data;
   if (!msg || msg.__jiraTg !== true) return;
   if (msg.type === "JIRA_ISSUE_PAYLOAD") {

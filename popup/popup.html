@@ -313,36 +313,65 @@
         <button class="bp-close" aria-label="닫기" data-close="project-mgr-dialog">×</button>
       </div>
       <div class="bp-body">
-        <details class="preset-help">
-          <summary>ID 얻는 법 (개발자용)</summary>
-          <div class="preset-help-body">
-            <ol>
-              <li>TeamGantt에서 아무 프로젝트 진입</li>
-              <li>Chrome <b>개발자도구 (⌥⌘I)</b> → <b>Network</b> 패널 열고 필터에 <code>v1/</code> 입력</li>
-              <li>페이지 새로고침 → 아래 요청이 잡힘</li>
-              <li><code>Response</code> 탭의 JSON 전체 복사</li>
-              <li>아래 textarea에 붙여넣고 <b>병합 적용</b></li>
-            </ol>
-            <div class="preset-help-apis">
-              <div><code>GET https://api.teamgantt.com/v1/projects/all?fields[]=id&amp;fields[]=name&amp;status=active</code></div>
-            </div>
-            <div class="preset-help-note">응답 통째로 붙여도 <code>id</code> / <code>name</code> 필드만 추출됩니다.</div>
-          </div>
-        </details>
-
         <div class="preset-list" id="projects-list"></div>
-        <div class="toolbar">
-          <input type="text" id="project-add-id" placeholder="1234567" style="width:90px" />
-          <input type="text" id="project-add-name" placeholder="예시프로젝트" style="flex:1" />
-          <button id="btn-project-add">+ 추가</button>
+        <div class="modal-clear-row">
+          <button id="btn-project-clear" class="danger small">전체 삭제</button>
         </div>
-        <label>JSON 붙여넣기
+
+        <div class="modal-tabs" role="tablist">
+          <button type="button" class="modal-tab active" data-ptab="api">API 자동</button>
+          <button type="button" class="modal-tab" data-ptab="json">JSON 붙여넣기</button>
+          <button type="button" class="modal-tab" data-ptab="manual">1줄 추가</button>
+        </div>
+
+        <!-- API 자동 -->
+        <div class="modal-panel" data-ppanel="api">
+          <p class="panel-hint">TeamGantt 탭이 열려 있으면 [API 추출]을 누르세요. 결과가 아래 박스에 채워지면 [병합 적용] 또는 [덮어쓰기 적용]으로 반영합니다. 탭이 없으면 아래 URL로 먼저 여세요.</p>
+          <!-- URL(클릭 시 이동)과 [API 추출]을 한 줄로. URL은 늘이고 버튼은 우측 고정폭. -->
+          <div class="toolbar">
+            <input type="text" id="project-mgr-url" readonly title="클릭하면 TeamGantt로 이동" style="flex:1; min-width:0; height:25px" />
+            <button id="btn-project-fetch-api" class="primary" style="flex:none; height:25px">API 추출</button>
+          </div>
+          <textarea id="project-api-json" rows="4" placeholder="여기에 추출된 프로젝트 목록이 표시됩니다. [API 추출]을 먼저 누르세요."></textarea>
+          <div class="toolbar">
+            <button id="btn-project-api-merge">병합 적용</button>
+            <button id="btn-project-api-replace">덮어쓰기 적용</button>
+          </div>
+        </div>
+
+        <!-- JSON 붙여넣기 -->
+        <div class="modal-panel hidden" data-ppanel="json">
+          <details class="preset-help">
+            <summary>ID 얻는 법 (개발자용)</summary>
+            <div class="preset-help-body">
+              <div class="intro">보통은 위 <b>API 자동</b> 탭이 더 빠릅니다. 수동으로 받으려면:</div>
+              <ol>
+                <li>TeamGantt에서 아무 프로젝트 진입</li>
+                <li>Chrome <b>개발자도구 (⌥⌘I)</b> → <b>Network</b> 패널 열고 필터에 <code>v1/</code> 입력</li>
+                <li>페이지 새로고침 → 아래 요청이 잡힘</li>
+                <li><code>Response</code> 탭의 JSON 전체 복사</li>
+                <li>아래 textarea에 붙여넣고 <b>병합 적용</b></li>
+              </ol>
+              <div class="preset-help-apis">
+                <div><code>GET https://api.teamgantt.com/v1/projects/all?fields[]=id&amp;fields[]=name&amp;status=active</code></div>
+              </div>
+              <div class="preset-help-note">응답 통째로 붙여도 <code>id</code> / <code>name</code> 필드만 추출됩니다.</div>
+            </div>
+          </details>
           <textarea id="project-json" rows="3" placeholder='[{"id": 1234567, "name": "2026-예시프로젝트"}, {"id": 1234568, "name": "2026-예시프로젝트-Archive"}]'></textarea>
-        </label>
-        <div class="toolbar">
-          <button id="btn-project-json-merge">병합 적용</button>
-          <button id="btn-project-json-replace">덮어쓰기 적용</button>
-          <button id="btn-project-clear" class="danger">전체 삭제</button>
+          <div class="toolbar">
+            <button id="btn-project-json-merge">병합 적용</button>
+            <button id="btn-project-json-replace">덮어쓰기 적용</button>
+          </div>
+        </div>
+
+        <!-- 1줄 추가 -->
+        <div class="modal-panel hidden" data-ppanel="manual">
+          <div class="toolbar">
+            <input type="text" id="project-add-id" placeholder="1234567" style="width:90px" />
+            <input type="text" id="project-add-name" placeholder="예시프로젝트" style="flex:1" />
+            <button id="btn-project-add">+ 추가</button>
+          </div>
         </div>
       </div>
       <div class="bp-footer">

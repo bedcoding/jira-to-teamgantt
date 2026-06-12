@@ -385,7 +385,7 @@ async function refreshSyncUi() {
     progressFill.classList.toggle("complete", tot > 0 && cur >= tot);
   };
 
-  // done > 0 이어도 큐가 비면 idle 로. ✓/✅ 표시는 doneKeys 가 살아있어 유지.
+  // done > 0이어도 큐가 비면 idle로. ✓/✅ 표시는 doneKeys가 살아있어 유지.
   if (remaining === 0 && pendingCount === 0) {
     info.textContent = "";
     startBtn.textContent = "동기화 시작";

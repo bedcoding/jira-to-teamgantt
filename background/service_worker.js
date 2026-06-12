@@ -1,7 +1,7 @@
 // teamgantt-bridge.js → tgFetchCache 저장. popup [TeamGantt 수집 (API)]이 꺼내 upsert.
 
 chrome.runtime.onInstalled.addListener(() => {
-  // 정보성 로그 제거 — 필요 시 chrome://extensions/ 의 서비스 워커 콘솔에서 확인.
+  // 정보성 로그 제거 — 필요 시 chrome://extensions/의 서비스 워커 콘솔에서 확인.
 });
 
 // 확장 아이콘 클릭 시 사이드 패널 열기. X로 닫기 전까지 탭/페이지 전환과 무관.
