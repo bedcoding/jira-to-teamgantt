@@ -514,6 +514,35 @@ button.danger:hover { background: #fdd; }
 
 button.small { padding: 3px 8px; font-size: 11px; }
 
+/* ===================== 미검증(실험) 표시 — 테스트 후 이 블록만 삭제하면 원상복구 ===================== */
+/* 아직 실제 브라우저 검증을 안 한 기능 버튼/입력에 빨간 점선 + ⚠ 마커를 단다. */
+#btn-collect-jira-rest,
+#btn-tg-api-load-groups,
+#btn-tg-api-create,
+.tg-edit-save {
+  outline: 2px dashed #e5484d !important;
+  outline-offset: 1px;
+  background: #fff1f1 !important;
+  color: #c00 !important;
+  border-color: #e5484d !important;
+}
+#btn-collect-jira-rest::after,
+#btn-tg-api-load-groups::after,
+#btn-tg-api-create::after,
+.tg-edit-save::after { content: " ⚠"; }
+
+/* 인라인 편집 입력칸(시작/종료/진행)도 미검증 표시 */
+.tg-edit { outline: 1px dashed #e5a0a0 !important; }
+
+/* TG 테이블 '수정' 컬럼(6번째) 헤더에 라벨 */
+#tg-table th:nth-child(6)::after {
+  content: " ⚠미검증";
+  color: #c00;
+  font-weight: 400;
+  font-size: 10px;
+}
+/* ===================== /미검증 표시 끝 ===================== */
+
 /* 모달 내부 입력방식 탭 (API 자동 / JSON / 1줄 추가) — 메인 탭보다 작은 언더라인 스타일 */
 .modal-tabs {
   display: flex;
