@@ -58,6 +58,7 @@
 
       <div class="card-actions">
         <button id="btn-collect-jira-fetch" class="primary">Jira 수집 (API)</button>
+        <button id="btn-collect-jira-rest" data-tip="실험: atlassian.net과 동일 출처에서 REST(/rest/api/3/search/jql)를 쿠키 세션으로 직접 호출. 검색버튼 꼼수·GraphQL 의존 없이 수집(아무 Jira 탭이나 열려 있으면 됨).">Jira 수집 (REST·실험)</button>
         <button id="btn-collect-jira" data-tip="DOM 파싱. 가상 스크롤 때문에 화면에 보이는 행만 가져옵니다.">Jira 수집 (DOM)</button>
         <button id="btn-clear-jira" class="danger">전체 삭제</button>
         <span id="jira-status" class="status inline"></span>
@@ -148,6 +149,7 @@
           <th>시작</th>
           <th>종료</th>
           <th>진행</th>
+          <th>수정</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -184,6 +186,13 @@
         <button id="btn-sync-stop" class="hidden" data-tip="단축키 동작 멈춤">동기화 중지</button>
         <button id="btn-sync-detect" class="ghost" data-tip="사용자가 (+) 버튼을 눌러서 입력창을 띄운 상태인지 확인">입력창 감지</button>
         <div id="hotkey-badge" class="hotkey-badge" data-tip="작업 입력 단축키. 운영체제별로 다름."></div>
+      </div>
+
+      <div id="tg-api-bar" class="card-actions sync-bar hidden">
+        <select id="tg-api-group-select" data-tip="새 작업을 넣을 TeamGantt 그룹"></select>
+        <button id="btn-tg-api-load-groups" class="ghost" data-tip="열린 TeamGantt 탭의 토큰으로 이 프로젝트의 그룹 목록을 불러옵니다">그룹 불러오기</button>
+        <button id="btn-tg-api-create" class="primary" data-tip="비교에서 'Jira만'인 누락분을 TeamGantt API로 바로 생성(+담당자 자동 할당). 단축키 반자동 대신 한 번에.">누락분 API 등록 (실험)</button>
+        <span id="tg-api-status" class="status inline"></span>
       </div>
     </div>
 
