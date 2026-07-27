@@ -1,10 +1,9 @@
 import {
   getAll, getSettings, setSettings,
-  upsertTgTasks, getTgFetchCache, normalizeTgFromFetch, clearTgTasks, patchTgTask,
+  upsertTgTasks, getTgFetchCache, normalizeTgFromFetch, clearTgTasks,
 } from "../lib/storage.js";
 import { showSnackbar } from "./snackbar.js";
 import { renderPager } from "./pager.js";
-import { resolveTgToken as resolveTgTokenApi, updateTask } from "../lib/teamgantt-api.js";
 
 let tgPage = 1;
 
@@ -211,15 +210,6 @@ async function handleCollectTgDom() {
   await renderTgTable();
 }
 
-// 저장된 TG 날짜를 <input type="date">용 YYYY-MM-DD로 정규화.
-function toDateInputValue(v) {
-  if (!v) return "";
-  const s = String(v);
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
-  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
-  return "";
-}
 
 async function renderTgTable() {
   const { tgTasks, settings } = await getAll();
@@ -231,38 +221,26 @@ async function renderTgTable() {
   const slice = pageSize === 0 ? list : list.slice((tgPage - 1) * pageSize, tgPage * pageSize);
   for (const it of slice) {
     const tr = document.createElement("tr");
-    const td = () => document.createElement("td");
-    const tdK = td(); tdK.textContent = it.jiraKey ?? "";
-    const tdN = td(); tdN.textContent = it.rawTitle ?? "";
-
-    // 시작/종료/진행을 인라인 편집 입력으로. (이식 4번)
-    const startInput = document.createElement("input");
-    startInput.type = "date"; startInput.className = "tg-edit tg-edit-date";
-    startInput.value = toDateInputValue(it.start);
-    const endInput = document.createElement("input");
-    endInput.type = "date"; endInput.className = "tg-edit tg-edit-date";
-    endInput.value = toDateInputValue(it.end);
-    const pctInput = document.createElement("input");
-    pctInput.type = "number"; pctInput.min = "0"; pctInput.max = "100"; pctInput.className = "tg-edit tg-edit-pct";
-    pctInput.value = it.progress != null ? String(it.progress).replace(/%$/, "") : "";
-
-    // DOM 수집으로 날짜가 비었던 행 안내(이제 직접 채워 저장 가능).
-    if (it.source === "dom" && !it.start && !it.end) {
-      startInput.title = DATE_MISSING_TIP;
-      endInput.title = DATE_MISSING_TIP;
+    const tdK = document.createElement("td"); tdK.textContent = it.jiraKey ?? "";
+    const tdN = document.createElement("td"); tdN.textContent = it.rawTitle ?? "";
+    const tdS = document.createElement("td");
+    const tdE = document.createElement("td");
+    const showWarn = it.source === "dom" && !it.start && !it.end;
+    if (showWarn) {
+      for (const td of [tdS, tdE]) {
+        td.textContent = "⚠️";
+        td.classList.add("tip");
+        td.setAttribute("data-tip", DATE_MISSING_TIP);
+      }
+    } else {
+      tdS.textContent = it.start ?? "";
+      tdE.textContent = it.end ?? "";
     }
-
-    const tdS = td(); tdS.appendChild(startInput);
-    const tdE = td(); tdE.appendChild(endInput);
-    const tdP = td(); tdP.appendChild(pctInput);
-    const tdA = td();
-    const saveBtn = document.createElement("button");
-    saveBtn.textContent = "저장"; saveBtn.className = "ghost tg-edit-save";
-    saveBtn.addEventListener("click", () =>
-      saveTaskEdit(it, { start: startInput, end: endInput, progress: pctInput }, saveBtn));
-    tdA.appendChild(saveBtn);
-
-    tr.append(tdK, tdN, tdS, tdE, tdP, tdA);
+    const tdP = document.createElement("td");
+    // 옛 데이터엔 "100%" 문자열, 새 데이터엔 100 숫자. 중복 % 방지.
+    const progressStr = it.progress != null ? String(it.progress).replace(/%$/, "") + "%" : "";
+    tdP.textContent = progressStr;
+    tr.append(tdK, tdN, tdS, tdE, tdP);
     tbody.appendChild(tr);
   }
   $("tg-status").textContent = `누적 ${total}건`;
@@ -284,49 +262,6 @@ function tokenErrSnackbar(t) {
   showSnackbar(msg, { kind: "error", actionLabel: "새로고침", onAction: () => t.tab && chrome.tabs.reload(t.tab.id), duration: 8000 });
 }
 
-// 한 행의 "변경분만" PATCH. (이식 4번 — CLI ui-edit.tsx 검증 규칙 + 변경 필드만 전송 → color 등 보존)
-async function saveTaskEdit(task, els, btn) {
-  const startV = els.start.value;       // "" 또는 YYYY-MM-DD (date 입력이 형식 보장)
-  const endV = els.end.value;
-  const pctRaw = els.progress.value.trim();
-
-  if (pctRaw !== "") {
-    const n = Number(pctRaw);
-    if (!Number.isInteger(n) || n < 0 || n > 100) {
-      showSnackbar("진행률은 0~100 사이 정수여야 합니다.", { kind: "error" });
-      return;
-    }
-  }
-  if (startV && endV && endV < startV) {
-    showSnackbar(`종료일(${endV})이 시작일(${startV})보다 빠릅니다.`, { kind: "error" });
-    return;
-  }
-
-  // 현재 값과 비교해 변경분만 모은다.
-  const curStart = toDateInputValue(task.start);
-  const curEnd = toDateInputValue(task.end);
-  const curPct = task.progress != null ? Number(String(task.progress).replace(/%$/, "")) : null;
-  const payload = {};
-  const local = {};
-  if (startV && startV !== curStart) { payload.start_date = startV; local.start = startV; }
-  if (endV && endV !== curEnd) { payload.end_date = endV; local.end = endV; }
-  if (pctRaw !== "" && Number(pctRaw) !== curPct) { payload.percent_complete = Number(pctRaw); local.progress = Number(pctRaw); }
-  if (Object.keys(payload).length === 0) { showSnackbar("변경 사항이 없습니다.", { kind: "warn" }); return; }
-
-  const t = await resolveTgTokenApi();
-  if (t.error) { tokenErrSnackbar(t); return; }
-
-  btn.disabled = true; btn.classList.add("is-loading");
-  try {
-    const res = await updateTask(task.id, payload, t.auth);
-    if (!res.ok) { showSnackbar(`수정 실패: ${res.error}`, { kind: "error", duration: 7000 }); return; }
-    await patchTgTask(task.id, local);
-    showSnackbar(`수정 완료: ${task.rawTitle ?? task.id}`, { kind: "ok" });
-    await renderTgTable();
-  } finally {
-    btn.disabled = false; btn.classList.remove("is-loading");
-  }
-}
 
 export async function initTgTab() {
   const elMyId   = $("tg-my-id");
@@ -671,9 +606,13 @@ export async function initTgTab() {
         showSnackbar("정규화 결과 0건. (payload가 비었거나 myTgId 불일치)", { kind: "error", duration: 6000 });
         return;
       }
-      const result = await upsertTgTasks(normalized);
+      // 직통은 이 프로젝트의 전량 스냅샷이므로, 응답에 없는 task는 TG에서 지워진 것으로
+      // 보고 정리한다(prune). 가로채기·DOM은 부분 데이터라 켜지 않는다.
+      const result = await upsertTgTasks(normalized, { prune: true, projectId: Number(cur.tgProjectId) });
       showSnackbar(
-        `TeamGantt 수집(API 직통): 신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped} · 누적 ${result.total}`,
+        `신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped}`
+        + (result.removed ? ` / 삭제 ${result.removed}` : "")
+        + ` · 누적 ${result.total}`,
         { kind: "ok", duration: 5000 }
       );
       await renderTgTable();
