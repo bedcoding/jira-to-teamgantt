@@ -57,8 +57,8 @@
       </div>
 
       <div class="card-actions">
-        <button id="btn-collect-jira-fetch" class="primary">Jira 수집 (API)</button>
-        <button id="btn-collect-jira" data-tip="DOM 파싱. 가상 스크롤 때문에 화면에 보이는 행만 가져옵니다.">Jira 수집 (DOM)</button>
+        <button id="btn-collect-jira-fetch" class="primary" data-tip="Jira가 보낸 검색 API 응답을 가로채 수집 — 안 잡히면 [검색]을 다시 실행합니다">API 가로채기</button>
+        <button id="btn-collect-jira" data-tip="화면에 보이는 이슈 행을 직접 읽어 수집 — 가상 스크롤로 화면 밖 행은 빠질 수 있음">DOM 추출</button>
         <button id="btn-clear-jira" class="danger">전체 삭제</button>
         <span id="jira-status" class="status inline"></span>
       </div>
@@ -119,8 +119,9 @@
       </div>
 
       <div class="card-actions">
-        <button id="btn-collect-tg-fetch" class="primary">TeamGantt 수집 (API)</button>
-        <button id="btn-collect-tg-dom">TeamGantt 수집 (DOM)</button>
+        <button id="btn-collect-tg-direct" class="primary" data-tip="TeamGantt 탭의 토큰으로 children API를 직접 호출 — 새로고침·캐시 대기 없이 즉시 수집">API 직통</button>
+        <button id="btn-collect-tg-fetch" data-tip="TeamGantt 페이지가 보낸 API 응답을 가로채 수집 — 안 잡히면 페이지 새로고침 필요">API 가로채기</button>
+        <button id="btn-collect-tg-dom" data-tip="화면에 보이는 작업 행을 직접 읽어 수집 — 가상 스크롤로 화면 밖 행은 날짜가 빠질 수 있음">DOM 추출</button>
         <button id="btn-clear-tg" class="danger">전체 삭제</button>
         <span id="tg-status" class="status inline"></span>
       </div>

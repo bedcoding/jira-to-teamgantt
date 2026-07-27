@@ -471,10 +471,10 @@ export async function initTgTab() {
       .filter((p) => Number.isFinite(p.id) && p.name);
   }
 
-  let tgApiBusy = false; // 프로젝트/사용자 추출 공용 연타 가드
+  let tgApiBusy = false; // TG API 추출/수집 공용 연타 가드 (프로젝트·사용자 추출 + 작업 직통 수집)
 
-  // 버튼 로딩 스피너 토글 + 공용 에러 캐치.
-  async function runApiExtract(btnId, fn) {
+  // 버튼 로딩 스피너 토글 + 공용 에러 캐치. failLabel은 throw 시 스낵바 접두어.
+  async function runApiExtract(btnId, fn, failLabel = "추출 실패") {
     if (tgApiBusy) return;
     tgApiBusy = true;
     const btn = $(btnId);
@@ -483,7 +483,7 @@ export async function initTgTab() {
     try {
       await fn();
     } catch (e) {
-      showSnackbar(`추출 실패: ${e?.message ?? e}`, { kind: "error", duration: 6000 });
+      showSnackbar(`${failLabel}: ${e?.message ?? e}`, { kind: "error", duration: 6000 });
     } finally {
       tgApiBusy = false;
       btn.disabled = false;
@@ -566,6 +566,41 @@ export async function initTgTab() {
     const next = await applyJson("tgPeople", people, $("person-api-json").value, "replace");
     if (next) { people = next; refreshUI(); showSnackbar(`사용자 덮어쓰기 (총 ${next.length}명)`); }
   });
+
+  // ── TeamGantt 작업 직통 수집 ──
+  // 가로채기 캐시를 기다리지 않고 TG 탭의 토큰으로 children API를 직접 호출한다.
+  // 페이지가 붙이는 쿼리 파라미터를 모르므로, 가로채기 캐시에 남은 실제 URL이 있으면 재사용.
+  async function handleCollectTgDirect() {
+    await runApiExtract("btn-collect-tg-direct", async () => {
+      const cur = await getSettings();
+      if (!cur.tgProjectId) {
+        showSnackbar("프로젝트를 먼저 선택하세요.", { kind: "error" });
+        return;
+      }
+      const t = await resolveTgToken();
+      if (!t) return;
+      const cache = await getTgFetchCache();
+      const url = cache[String(cur.tgProjectId)]?.url
+        ?? `https://api.teamgantt.com/v1/projects/${cur.tgProjectId}/children`;
+      const data = await fetchTgJson(url, t.auth, t.tab);
+      if (!data) return;
+      const normalized = normalizeTgFromFetch(data, {
+        prefixRegex: cur.prefixRegex,
+        myTgId: cur.tgMyId,
+      }).map((x) => ({ ...x, source: "api" }));
+      if (normalized.length === 0) {
+        showSnackbar("정규화 결과 0건. (payload가 비었거나 myTgId 불일치)", { kind: "error", duration: 6000 });
+        return;
+      }
+      const result = await upsertTgTasks(normalized);
+      showSnackbar(
+        `TeamGantt 수집(API 직통): 신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped} · 누적 ${result.total}`,
+        { kind: "ok", duration: 5000 }
+      );
+      await renderTgTable();
+    }, "수집 실패");
+  }
+  $("btn-collect-tg-direct").addEventListener("click", handleCollectTgDirect);
 
   $("btn-collect-tg-fetch").addEventListener("click", handleCollectTgFetch);
   $("btn-collect-tg-dom").addEventListener("click", handleCollectTgDom);

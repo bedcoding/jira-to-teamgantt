@@ -494,10 +494,14 @@ button.is-loading::before {
   margin: auto;        /* 그 안에서 12x12를 상하좌우 자동 중앙 */
   width: 12px;
   height: 12px;
-  border: 2px solid #fff;
+  border: 2px solid #888; /* 일반(흰 배경) 버튼용. color:transparent라 currentColor는 못 씀 */
   border-top-color: transparent;
   border-radius: 50%;
   animation: btn-spin 600ms linear infinite;
+}
+button.primary.is-loading::before {
+  border-color: #fff;
+  border-top-color: transparent;
 }
 
 @keyframes btn-spin {
