@@ -518,35 +518,6 @@ button.danger:hover { background: #fdd; }
 
 button.small { padding: 3px 8px; font-size: 11px; }
 
-/* ===================== 미검증(실험) 표시 — 테스트 후 이 블록만 삭제하면 원상복구 ===================== */
-/* 아직 실제 브라우저 검증을 안 한 기능 버튼/입력에 빨간 점선 + ⚠ 마커를 단다. */
-#btn-collect-jira-rest,
-#btn-tg-api-load-groups,
-#btn-tg-api-create,
-.tg-edit-save {
-  outline: 2px dashed #e5484d !important;
-  outline-offset: 1px;
-  background: #fff1f1 !important;
-  color: #c00 !important;
-  border-color: #e5484d !important;
-}
-#btn-collect-jira-rest::after,
-#btn-tg-api-load-groups::after,
-#btn-tg-api-create::after,
-.tg-edit-save::after { content: " ⚠"; }
-
-/* 인라인 편집 입력칸(시작/종료/진행)도 미검증 표시 */
-.tg-edit { outline: 1px dashed #e5a0a0 !important; }
-
-/* TG 테이블 '수정' 컬럼(6번째) 헤더에 라벨 */
-#tg-table th:nth-child(6)::after {
-  content: " ⚠미검증";
-  color: #c00;
-  font-weight: 400;
-  font-size: 10px;
-}
-/* ===================== /미검증 표시 끝 ===================== */
-
 /* 모달 내부 입력방식 탭 (API 자동 / JSON / 1줄 추가) — 메인 탭보다 작은 언더라인 스타일 */
 .modal-tabs {
   display: flex;
@@ -767,33 +738,52 @@ h3 {
 
 #compare-table { table-layout: fixed; width: 100%; }
 #compare-table td { word-break: break-word; vertical-align: middle; }
-/* 1: 키, 2: Jira 상태, 3: Jira 제목, 4: TeamGantt 제목, 5: 날짜 */
-#compare-table th:nth-child(1), #compare-table td:nth-child(1) {
+/* 컬럼 폭/정렬은 클래스로 지정한다. nth-child로 잡으면 컬럼이 하나 늘어날 때
+   뒤가 전부 밀려서 조용히 깨진다(체크박스 컬럼 추가 때 실제로 겪음). */
+#compare-table .col-check {
+  width: 28px;
+  text-align: center;
+  padding-left: 2px;
+  padding-right: 2px;
+  user-select: none;   /* Shift+클릭 범위 선택 시 텍스트가 딸려 잡히지 않게 */
+}
+/* 체크박스 컬럼은 '그룹에 일괄 등록' 모드에서만 노출.
+   table-layout:fixed라 display:none이면 컬럼 폭도 함께 사라진다. */
+#compare-table:not(.show-check) .col-check { display: none; }
+#compare-table .api-pick,
+#compare-table #compare-check-all { margin: 0; cursor: pointer; }
+
+#compare-table .col-key {
   width: 90px;
   text-align: center;
 }
-#compare-table th:nth-child(2), #compare-table td:nth-child(2) {
+#compare-table .col-status {
   width: 70px;
   white-space: nowrap;
   font-size: 12px;
   text-align: center;
 }
 /* Jira/TeamGantt 제목 컬럼은 데이터만 좌측 정렬(긴 텍스트). 헤더는 가운데 유지. */
-#compare-table td:nth-child(3),
-#compare-table td:nth-child(4) { text-align: left; }
-#compare-table th:nth-child(5), #compare-table td:nth-child(5) {
+#compare-table td.col-jira,
+#compare-table td.col-tg { text-align: left; }
+#compare-table .col-date {
   width: 90px;
   white-space: nowrap;
   text-align: center;
 }
 /* TeamGantt 컬럼 안의 ✓/✅/📋 마크 버튼들은 셀 중앙에 오도록. */
-#compare-table td:nth-child(4) .sync-mark,
-#compare-table td:nth-child(4) .sync-pending-mark,
-#compare-table td:nth-child(4) .sync-pending-cancel {
+#compare-table td.col-tg .sync-mark,
+#compare-table td.col-tg .sync-pending-mark,
+#compare-table td.col-tg .sync-pending-cancel,
+#compare-table td.col-tg .sync-done-undo {
   display: inline-block;
 }
-#compare-table td:nth-child(4):has(.sync-mark) { text-align: center; }
-#compare-table td:nth-child(4):has(.sync-pending-mark) { text-align: center; }
+#compare-table td.col-tg:has(.sync-mark) { text-align: center; }
+#compare-table td.col-tg:has(.sync-pending-mark) { text-align: center; }
+/* '✓ 등록 완료' 와 × 는 한 줄에 붙어야 한다. 셀 폭이 좁아 기본 줄바꿈이 일어나면
+   × 가 배지 아래로 떨어져 다른 행의 버튼처럼 보인다. 배지 좌우 여백도 함께 줄인다. */
+#compare-table td.col-tg:has(.sync-done-undo) { white-space: nowrap; }
+#compare-table td.col-tg:has(.sync-done-undo) .sync-mark { padding: 3px 7px; }
 
 .empty-note {
   display: none;
@@ -1246,6 +1236,50 @@ input[type="text"][readonly]:hover {
   line-height: 1;
 }
 
+/* ── 비교 탭 하위 모드 탭(수동 동기화 / 그룹에 일괄 등록) ──
+   모달용 .modal-tabs 를 재사용하지만, 여기서는 카드 '안'이라 컨테이너 밑줄을 뺀다.
+   바로 아래 .card-actions 가 border-top(점선)을 갖고 있어서 그대로 두면
+   실선+점선이 6px 간격으로 두 줄 그어져 지저분하다. 활성 탭의 파란 밑줄은
+   .modal-tab 자신의 border라 그대로 유지된다. */
+#compare-mode-tabs {
+  border-bottom: none;
+  margin-bottom: 8px;
+}
+#compare-mode-tabs .modal-tab { margin-bottom: 0; }
+/* 탭이 고른 내용은 박스 안에 담는다 — 탭 바로 아래 버튼이 맨몸으로 붙어 있으면
+   어디까지가 이 탭의 영역인지 알 수 없다. 바로 위 필터 칩(.filter-box)과 같은 톤을
+   써서 카드 안에 새로운 시각 언어를 만들지 않는다. */
+#compare-mode-tabs ~ .card-actions {
+  border-top: none;
+  margin-top: 0;
+  padding: 8px 10px;
+  background: #fafbfd;
+  border: 1px solid #dde3ee;
+  border-radius: 8px;
+}
+
+/* [☆] + select 를 한 줄로 묶어 꽉 채운다. select 만 100%로 두면 별 버튼이 다음 줄로
+   밀리고, 반대로 select 를 내용 크기에 맡기면 '늘어나다 만' 폭이 된다.
+   .grow(= flex:1 1 auto) 가 별 버튼을 뺀 나머지를 select 에 준다. */
+#tg-api-bar #tg-api-group-row {
+  flex: 1 1 100%;
+  width: 100%;
+  flex-wrap: nowrap;   /* 별 버튼과 select 가 갈라지지 않게 */
+}
+#tg-api-bar #tg-api-group-select {
+  min-width: 0;        /* 긴 그룹 경로 때문에 셀이 밀려나지 않게 */
+}
+/* 즐겨찾기 별은 상태가 한눈에 보여야 한다(☆ 회색 / ★ 노랑). */
+#btn-tg-api-fav {
+  color: #b8bfc9;
+  font-size: 15px;
+  /* .icon-btn 의 고정 height(28px)는 select(내용 높이 약 24px)보다 커서 혼자 튄다.
+     숫자를 맞추면 폰트가 바뀔 때 또 어긋나므로, 형제(select) 높이에 맞춰 늘린다. */
+  height: auto;
+  align-self: stretch;
+}
+#btn-tg-api-fav:hover { background: #eef1f5; }
+
 /* sync-bar 는 card-actions 클래스도 함께 가져서 다른 탭 액션 줄과 동일 스타일.
    여기서는 hidden 클래스가 제대로 먹도록만 강제. */
 .sync-bar.hidden { display: none; }
@@ -1397,6 +1431,22 @@ input[type="text"][readonly]:hover {
   border-color: #93c5fd;
 }
 .sync-mark-confirmed:hover { background: #bfdbfe; }
+/* 등록 완료 해제(×) — 되돌리는 동작이라 눈에 덜 띄게, 호버 때만 위험색으로. */
+.sync-done-undo {
+  padding: 1px 5px;
+  font-size: 11px;
+  line-height: 1.2;
+  border: 1px solid #dde3ee;
+  border-radius: 4px;
+  background: #fff;
+  color: #999;
+  cursor: pointer;
+}
+.sync-done-undo:hover {
+  border-color: #e5484d;
+  color: #c00;
+  background: #fff5f5;
+}
 /* 수동 체크 — 색이 동기화 흐름과 구분되도록 회색 톤. */
 .sync-mark-manual {
   background: #f1f5f9;

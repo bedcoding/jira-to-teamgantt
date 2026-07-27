@@ -2,6 +2,7 @@ import {
   getAll, getSettings, setSettings,
   getSyncQueue, setSyncQueue, clearSyncQueue,
   getManualChecked, setManualChecked,
+  getApiSelected, updateApiSelected, getApiCreated, addApiCreated, removeApiCreated,
 } from "../lib/storage.js";
 import { showSnackbar } from "./snackbar.js";
 import { resolveTgToken, listGroupsFlat, createTask, assignResource } from "../lib/teamgantt-api.js";
@@ -59,12 +60,13 @@ function classifyRows(jiraByKey, tgByKey, tgWithoutKey) {
 // 'Jira만' 행의 TeamGantt 컬럼만 부분 갱신.
 // 전체 표 재렌더 시 발생하는 깜빡임/스크롤 튐을 피하려고 td 단위로 그린다.
 function renderTgCellForJiraOnly(tdT, r, confirmed) {
-  if (confirmed) {
-    tdT.innerHTML = `<button class="sync-mark sync-mark-confirmed" data-tip="클릭해서 해제">✅ 보정 완료</button>`;
-  } else {
-    tdT.innerHTML = `<button class="sync-mark sync-mark-done" data-tip="클릭해서 보정 완료로 표시">✓ 등록 완료</button>`;
-  }
-  tdT.querySelector("button").addEventListener("click", async () => {
+  const mark = confirmed
+    ? `<button class="sync-mark sync-mark-confirmed" data-tip="클릭해서 해제">✅ 보정 완료</button>`
+    : `<button class="sync-mark sync-mark-done" data-tip="클릭해서 보정 완료로 표시">✓ 등록 완료</button>`;
+  // × = 등록 완료 자체를 해제. 해제하면 체크박스가 다시 살아나 재등록할 수 있다.
+  tdT.innerHTML = `${mark} <button class="sync-done-undo" data-tip="등록 완료 해제 — 다시 체크해서 등록할 수 있게 됩니다">×</button>`;
+
+  tdT.querySelector(".sync-mark").addEventListener("click", async () => {
     const q = await getSyncQueue();
     const set = new Set(q.confirmedKeys ?? []);
     const nextConfirmed = !set.has(r.key);
@@ -73,6 +75,24 @@ function renderTgCellForJiraOnly(tdT, r, confirmed) {
     q.confirmedKeys = [...set];
     await setSyncQueue(q);
     renderTgCellForJiraOnly(tdT, r, nextConfirmed); // 전체 재렌더 안 함.
+  });
+
+  tdT.querySelector(".sync-done-undo").addEventListener("click", async () => {
+    // 되돌리기 어려운 방향(재등록 시 TeamGantt에 중복 생성)이라 확인을 받는다.
+    if (!confirm(
+      `${r.key} 의 '등록 완료'를 해제합니다.\n\n`
+      + "다시 체크해서 등록할 수 있게 되지만, TeamGantt에 이미 남아 있으면 같은 작업이 중복 생성됩니다.\n"
+      + "TeamGantt에서 지웠거나 다른 그룹으로 옮기려는 경우에만 해제하세요.\n\n계속할까요?"
+    )) return;
+
+    // 등록 완료로 보이게 만드는 출처가 둘이므로 양쪽에서 모두 빼야 한다.
+    await removeApiCreated([r.key]);                      // API로 만든 이력
+    const q = await getSyncQueue();
+    q.doneKeys = (q.doneKeys ?? []).filter((k) => k !== r.key);        // 단축키로 넣은 이력
+    q.confirmedKeys = (q.confirmedKeys ?? []).filter((k) => k !== r.key);
+    await setSyncQueue(q);
+    await renderCompare();
+    showSnackbar(`${r.key} 등록 완료 해제 — 다시 체크할 수 있습니다.`, { kind: "ok", duration: 5000 });
   });
 }
 
@@ -85,18 +105,18 @@ async function updateRowsAfterInject(newPendingKey) {
   const justDoneKey = q.doneKeys[q.doneKeys.length - 1];
   if (justDoneKey) {
     const tr = document.querySelector(`#compare-table tr[data-jira-only-key="${cssEscape(justDoneKey)}"]`);
-    const tdT = tr?.children[3]; // 1키, 2상태, 3제목, 4 TG, 5 날짜  (인덱스 0~4)
+    const tdT = tr?.querySelector(".col-tg");
     if (tdT) {
-      const summaryText = tr?.children[2]?.textContent ?? "";
+      const summaryText = tr?.querySelector(".col-jira")?.textContent ?? "";
       renderTgCellForJiraOnly(tdT, { key: justDoneKey, jira: { summary: summaryText } }, q.confirmedKeys?.includes(justDoneKey));
     }
   }
   // 2) 새 pending 행을 📋 입력됨 으로.
   if (newPendingKey) {
     const tr = document.querySelector(`#compare-table tr[data-jira-only-key="${cssEscape(newPendingKey)}"]`);
-    const tdT = tr?.children[3];
+    const tdT = tr?.querySelector(".col-tg");
     if (tdT) {
-      const summaryText = tr?.children[2]?.textContent ?? "";
+      const summaryText = tr?.querySelector(".col-jira")?.textContent ?? "";
       renderTgCellPending(tdT, { key: newPendingKey, jira: { summary: summaryText } });
     }
   }
@@ -151,14 +171,43 @@ function renderTgCellPending(tdT, r) {
   });
 }
 
-function renderRow(r, dateSource, doneKeys, pendingKey, confirmedKeys, manualChecked) {
+// doneKeys 자리에는 '등록 완료로 볼 키 집합'(syncQueue.doneKeys ∪ apiCreatedKeys)이 들어온다.
+// blocked는 거기에 manualChecked까지 합친 '등록 대상에서 제외할 키 집합'.
+function renderRow(r, dateSource, doneKeys, pendingKey, confirmedKeys, manualChecked, apiSelected, blocked) {
   const tr = document.createElement("tr");
   tr.className = r.kind;
+  // 셀은 클래스로 찾는다. 인덱스(children[N])로 잡으면 컬럼이 하나 늘 때마다 전부 밀린다.
+  const tdC   = document.createElement("td");
   const tdKey = document.createElement("td");
   const tdS   = document.createElement("td");
   const tdJ   = document.createElement("td");
   const tdT   = document.createElement("td");
   const tdD   = document.createElement("td");
+  tdC.classList.add("col-check");
+  tdKey.classList.add("col-key");
+  tdJ.classList.add("col-jira");
+  tdT.classList.add("col-tg");
+  tdD.classList.add("col-date");
+
+  // 등록 대상 체크박스는 '아직 TG에 없는(jira-only)' 행에만 의미가 있다.
+  // 이미 처리된 건(등록 완료 / 수동 ✓)은 중복 생성을 막으려고 체크 자체를 비활성화한다.
+  // disabled input은 hover 이벤트를 안 받으므로 안내는 부모 td에 붙인다.
+  if (r.kind === "jira-only") {
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "api-pick";
+    cb.dataset.key = r.key;
+    if (blocked?.has(r.key)) {
+      cb.disabled = true;
+      tdC.classList.add("tip");
+      tdC.setAttribute("data-tip", manualChecked?.has(r.key)
+        ? "수동 ✓ 표시된 항목 — 이미 처리한 것으로 봅니다"
+        : "이미 등록된 항목입니다");
+    } else {
+      cb.checked = apiSelected?.has(r.key) ?? false;
+    }
+    tdC.appendChild(cb);
+  }
 
   tdS.textContent = r.jira?.status ?? "—";
   if (!r.jira?.status) tdS.style.color = "#bbb";
@@ -216,7 +265,7 @@ function renderRow(r, dateSource, doneKeys, pendingKey, confirmedKeys, manualChe
     tdD.style.color = "#bbb";
   }
 
-  tr.append(tdKey, tdS, tdJ, tdT, tdD);
+  tr.append(tdC, tdKey, tdS, tdJ, tdT, tdD);
   return tr;
 }
 
@@ -275,7 +324,6 @@ async function renderCompare() {
   const savedScroll = scroller.scrollTop;
 
   const tbody = document.querySelector("#compare-table tbody");
-  tbody.replaceChildren();
   const { jiraIssues, tgTasks, settings } = await getAll();
   const dateSource = settings.compareDateSource ?? "jiraUpdated";
   const syncQ = await getSyncQueue();
@@ -283,6 +331,11 @@ async function renderCompare() {
   const confirmedKeys = new Set(syncQ.confirmedKeys ?? []);
   const pendingKey = syncQ.pendingKey ?? null;
   const manualChecked = await getManualChecked();
+  const apiSelected = await getApiSelected();
+  // API로 만든 이력은 doneKeys와 별도로 영속된다([동기화 시작]이 doneKeys를 비우기 때문).
+  const apiCreated = await getApiCreated();
+  const registered = new Set([...doneKeys, ...apiCreated]);
+  const blocked = new Set([...registered, ...manualChecked]);
   const tgByKey = {};
   const tgWithoutKey = [];
   for (const task of Object.values(tgTasks)) {
@@ -296,7 +349,10 @@ async function renderCompare() {
   rows = applyKindFilter(rows, settings.syncIncludeKinds ?? []);
   sortRowsForDisplay(rows, dateSource);
 
-  for (const r of rows) tbody.appendChild(renderRow(r, dateSource, doneKeys, pendingKey, confirmedKeys, manualChecked));
+  // 비우기는 반드시 채우기 '직전'에 한다. 위쪽 await 6개 사이에 두면, 렌더가 두 번
+  // 겹칠 때 둘 다 비운 뒤 둘 다 채워서 모든 행이 2배로 나온다(검색 타이핑 중 실제 발생).
+  tbody.replaceChildren();
+  for (const r of rows) tbody.appendChild(renderRow(r, dateSource, registered, pendingKey, confirmedKeys, manualChecked, apiSelected, blocked));
 
   $("compare-date-col").textContent = DATE_LABEL[dateSource] ?? "날짜";
 
@@ -305,14 +361,21 @@ async function renderCompare() {
   const orphanK   = rows.filter((r) => r.kind === "tg-orphan-with-key").length;
   const orphanNK  = rows.filter((r) => r.kind === "tg-orphan-no-key").length;
 
-  // 'Jira만' 행이 있으면 동기화 바 노출.
-  const syncBar = $("sync-bar");
-  if (jiraOnly > 0) syncBar.classList.remove("hidden");
-  else              syncBar.classList.add("hidden");
-
-  // API 등록 바도 '누락분이 있을 때'만 노출(동기화 바와 동일 조건).
-  const apiBar = $("tg-api-bar");
-  if (apiBar) apiBar.classList.toggle("hidden", jiraOnly === 0);
+  // 두 모드는 각자의 바만 보여준다 — 한 화면에 섞여 있으면 뭘 눌러야 할지 알 수 없다.
+  // 어느 쪽이든 'Jira만' 행이 없으면 할 일이 없으므로 숨긴다.
+  //
+  // 단, 동기화가 진행 중이면 모드와 무관하게 sync-bar를 남긴다. 진행 표시(sync-status-card)는
+  // sync-bar 밖이라 계속 보이는데 [동기화 중지]/[완료]는 sync-bar 안에 있어서, api 모드로
+  // 넘어가면 "Enter 후 [완료] 버튼"이라고 안내하면서 그 버튼이 없는 상태가 된다.
+  // 단축키는 UI 모드를 보지 않고 계속 주입하므로 조작 수단을 없애면 안 된다.
+  const mode = settings.compareMode ?? "manual";
+  const hasJiraOnly = jiraOnly > 0;
+  const syncActive = (syncQ.items?.length ?? 0) > 0 || !!syncQ.pendingKey;
+  $("sync-bar").classList.toggle("hidden", !syncActive && (!hasJiraOnly || mode !== "manual"));
+  $("tg-api-bar").classList.toggle("hidden", !hasJiraOnly || mode !== "api");
+  // 체크박스 컬럼은 api 모드에서만 노출(table-layout:fixed라 숨기면 컬럼도 사라진다).
+  $("compare-table").classList.toggle("show-check", mode === "api");
+  refreshApiPickUi();
 
   renderKindChips(settings.syncIncludeKinds ?? [], { matched, unmatched: jiraOnly + orphanK + orphanNK });
   await renderStatusChips(jiraIssues, settings.syncIncludeStatuses ?? []);
@@ -591,9 +654,9 @@ async function skipNext() {
   await refreshSyncUi();
   // 비교 표에서 그 행의 TG 셀만 ✓ 등록 완료로 교체.
   const tr = document.querySelector(`#compare-table tr[data-jira-only-key="${cssEscape(skipped.key)}"]`);
-  const tdT = tr?.children[3];
+  const tdT = tr?.querySelector(".col-tg");
   if (tdT) {
-    const summaryText = tr?.children[2]?.textContent ?? "";
+    const summaryText = tr?.querySelector(".col-jira")?.textContent ?? "";
     renderTgCellForJiraOnly(tdT, { key: skipped.key, jira: { summary: summaryText } }, false);
   }
 }
@@ -612,6 +675,38 @@ function wireDialogClose(id) {
 // ── 실험: 누락분 TeamGantt API 직접 등록 (이식 1·5·3번) ───────────────────────
 // 단축키 반자동(입력창 주입)과 별개로, 가로챈 TeamGantt 토큰으로 api.teamgantt.com 에
 // task를 직접 POST 한다. 그룹(parent_group_id)을 골라 넣고, 내 ID가 있으면 담당자도 자동 할당.
+
+function syncModeTabUi(mode) {
+  for (const b of document.querySelectorAll("#compare-mode-tabs button[data-cmode]")) {
+    b.classList.toggle("active", b.dataset.cmode === mode);
+  }
+}
+
+// 등록 버튼 라벨/활성 상태와 전체선택 체크박스를 현재 체크 상태에 맞춘다.
+// 무엇이 등록될지 누르기 전에 보이게 하는 게 목적.
+function refreshApiPickUi() {
+  const boxes = [...document.querySelectorAll("#compare-table .api-pick:not(:disabled)")];
+  const picked = boxes.filter((b) => b.checked);
+  // '다음에 할 일'로 강조(primary)를 옮긴다. 셋 다 항상 파랗거나 항상 흐리면
+  // 순서를 모르는 사람은 가장 눈에 띄는 걸 먼저 누른다.
+  const groupChosen = Boolean(Number($("tg-api-group-select")?.value));
+  const loadBtn = $("btn-tg-api-load-groups");
+  if (loadBtn) loadBtn.classList.toggle("primary", !groupChosen);
+
+  const btn = $("btn-tg-api-create");
+  if (btn) {
+    // disabled로 막지 않는다 — 눌러도 아무 일이 없으면 고장으로 보인다.
+    // 항상 누를 수 있게 하고, 무엇이 빠졌는지는 클릭 시 스낵바로 알린다.
+    btn.textContent = picked.length ? `선택 ${picked.length}건 등록` : "선택 항목 등록";
+    btn.classList.toggle("primary", groupChosen && picked.length > 0);
+  }
+  const all = $("compare-check-all");
+  if (all) {
+    all.disabled = boxes.length === 0;
+    all.checked = boxes.length > 0 && picked.length === boxes.length;
+    all.indeterminate = picked.length > 0 && picked.length < boxes.length;
+  }
+}
 
 function snackbarForTokenError(t) {
   if (t.error === "no-tab") {
@@ -645,29 +740,118 @@ async function loadGroupsForCreate() {
       showSnackbar(`${res.error}. 토큰 만료면 TeamGantt 탭을 새로고침하세요.`, { kind: "error", duration: 7000 });
       return;
     }
-    const sel = $("tg-api-group-select");
-    const prev = settings.tgCreateGroupId ? String(settings.tgCreateGroupId) : sel.value;
-    sel.replaceChildren();
-    const ph = document.createElement("option");
-    ph.value = ""; ph.textContent = "그룹 선택…";
-    sel.appendChild(ph);
-    for (const g of res.groups) {
-      const o = document.createElement("option");
-      o.value = String(g.id);
-      o.textContent = `${"  ".repeat(g.depth)}${g.name}`;
-      sel.appendChild(o);
-    }
-    if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+    await fillGroupSelect(res.groups, settings.tgCreateGroupId);
+    lastGroupsFetchAt = Date.now();
     showSnackbar(`그룹 ${res.groups.length}개 불러옴 — 넣을 그룹을 고르세요.`, { kind: "ok", duration: 4000 });
   } finally {
     btn.disabled = false; btn.classList.remove("is-loading");
   }
 }
 
+// select 채우기 + 마지막 선택 복원. 수동 버튼과 자동 호출이 공유한다.
+//
+// 표시는 부모 경로를 붙인 전체 이름으로 한다. <option>의 앞쪽 공백은 브라우저가
+// 잘라내므로 들여쓰기로는 계층이 전혀 보이지 않는다 — 'BE'/'FE'/'7월'처럼 짧고
+// 여러 부모 아래 반복되는 이름은 경로 없이는 구분이 불가능하다.
+async function fillGroupSelect(groups, savedGroupId) {
+  const sel = $("tg-api-group-select");
+  if (!sel) return;
+  const prev = savedGroupId ? String(savedGroupId) : sel.value;
+
+  const { tgTasks, settings } = await getAll();
+  // 1) 즐겨찾기 — 사용자가 직접 지정. 가장 확실하므로 맨 위.
+  favCache = new Set((settings.favoriteGroupIds ?? []).map(String));
+  // 2) 내 작업이 이미 들어 있는 그룹 — 역산. parentGroupId는 최근 수집분에만 있어서
+  //    한 번 재수집하기 전까지는 비어 있다.
+  const mine = new Set();
+  for (const t of Object.values(tgTasks)) {
+    if (t.parentGroupId != null) mine.add(String(t.parentGroupId));
+  }
+
+  const labelOf = (g) => (g.path?.length ? `${g.path.join(" › ")} › ${g.name}` : g.name);
+  const optionOf = (g, star) => {
+    const o = document.createElement("option");
+    o.value = String(g.id);
+    o.textContent = star ? `★ ${labelOf(g)}` : labelOf(g);
+    return o;
+  };
+  const addGroup = (label, list, star) => {
+    if (!list.length) return;
+    const og = document.createElement("optgroup");
+    og.label = `${label} (${list.length})`;
+    for (const g of list) og.appendChild(optionOf(g, star));
+    sel.appendChild(og);
+  };
+
+  sel.replaceChildren();
+  const ph = document.createElement("option");
+  ph.value = ""; ph.textContent = "그룹 선택…";
+  sel.appendChild(ph);
+
+  const favs = groups.filter((g) => favCache.has(String(g.id)));
+  const mineOnly = groups.filter((g) => !favCache.has(String(g.id)) && mine.has(String(g.id)));
+  const rest = groups.filter((g) => !favCache.has(String(g.id)) && !mine.has(String(g.id)));
+
+  addGroup("★ 즐겨찾기", favs, true);
+  addGroup("내 작업이 있는 그룹", mineOnly, false);
+  addGroup(favs.length || mineOnly.length ? "그 외 전체" : "전체", rest, false);
+
+  if ([...sel.querySelectorAll("option")].some((o) => o.value === prev)) sel.value = prev;
+  refreshApiPickUi();   // 이전 선택이 복원됐을 수 있으니 강조를 다시 계산
+  refreshFavButton();
+}
+
+// 즐겨찾기 id 캐시 — 별 버튼 상태를 sync로 갱신하려고 들고 있는다(저장소는 settings).
+let favCache = new Set();
+
+function refreshFavButton() {
+  const btn = $("btn-tg-api-fav");
+  const sel = $("tg-api-group-select");
+  if (!btn || !sel) return;
+  const id = sel.value;
+  const isFav = Boolean(id) && favCache.has(String(id));
+  btn.textContent = isFav ? "★" : "☆";
+  btn.style.color = isFav ? "#f5a623" : "";   // 등록된 별은 노랑, 아니면 CSS 기본(회색)
+  btn.setAttribute("data-tip", !id
+    ? "그룹을 먼저 선택하세요 — 선택한 그룹을 즐겨찾기에 고정할 수 있습니다"
+    : isFav ? "즐겨찾기에서 빼기" : "이 그룹을 즐겨찾기에 넣기(목록 맨 위 고정)");
+}
+
+// 비교 탭에 들어올 때 그룹 목록을 조용히 새로 받아둔다 — 매번 [그룹 불러오기]를
+// 누르지 않아도 되게. '조용히'가 핵심이다:
+//  - api 모드가 아니면 애초에 필요 없다
+//  - TeamGantt 탭이 없거나 토큰이 안 잡혔으면 그냥 넘어간다. 에러 스낵바를 띄우면
+//    비교 탭에 들어갈 때마다 경고가 떠서 수동으로 누르는 것보다 더 괴롭다
+//  - 탭 전환이 잦으니 쿨다운을 둬서 API를 연달아 때리지 않는다
+let lastGroupsFetchAt = 0;
+const GROUPS_COOLDOWN_MS = 30_000;
+
+async function autoLoadGroupsQuietly() {
+  const settings = await getSettings();
+  if ((settings.compareMode ?? "api") !== "api") return;
+  if (!settings.tgProjectId) return;
+  if (Date.now() - lastGroupsFetchAt < GROUPS_COOLDOWN_MS) return;
+
+  const t = await resolveTgToken();
+  if (t.error) return;                        // 조용히 포기 — 수동 버튼이 그대로 남아 있다
+  const res = await listGroupsFlat(Number(settings.tgProjectId), t.auth);
+  if (!res.ok) return;                        // 실패도 조용히
+  lastGroupsFetchAt = Date.now();
+  await fillGroupSelect(res.groups, settings.tgCreateGroupId);
+}
+
 async function createMissingViaApi() {
   const groupSel = $("tg-api-group-select");
   const parentGroupId = Number(groupSel.value);
-  if (!parentGroupId) { showSnackbar("먼저 [그룹 불러오기] 후 넣을 그룹을 선택하세요.", { kind: "warn" }); return; }
+  // 빠진 조건을 '한 번에 모두' 알린다. 하나씩 알려주면 고치고 또 눌러야 해서 답답하다.
+  const pickedNow = document.querySelectorAll("#compare-table .api-pick:checked:not(:disabled)").length;
+  const missing = [];
+  if (!parentGroupId) missing.push("넣을 그룹([그룹 불러오기] 후 선택)");
+  if (pickedNow === 0) missing.push("등록할 항목(표에서 체크 · 드래그로 여러 개)");
+  if (missing.length) {
+    showSnackbar(`${missing.join(" + ")}이 필요합니다.`, { kind: "error", duration: 7000 });
+    return;
+  }
 
   const { jiraIssues, tgTasks, settings } = await getAll();
   if (!settings.tgProjectId) { showSnackbar("간트 탭에서 프로젝트를 먼저 선택하세요.", { kind: "error" }); return; }
@@ -684,14 +868,36 @@ async function createMissingViaApi() {
   rows = applyStatusFilter(rows, settings.syncIncludeStatuses ?? []);
   rows = applyKindFilter(rows, settings.syncIncludeKinds ?? []);
 
-  // 이미 등록 완료(doneKeys)된 키는 제외 → 두 번 눌러도 중복 생성 안 함.
+  // 대상 = 체크한 것 ∩ 현재 필터에 보이는 'Jira만' 행 − 이미 처리된 것.
+  // '이미 처리된 것'은 세 곳에서 온다. 하나라도 빠뜨리면 TeamGantt에 중복 생성된다:
+  //   syncQueue.doneKeys  — 이번 세션에 단축키로 넣은 것
+  //   apiCreatedKeys      — 과거에 API로 만든 것(doneKeys는 [동기화 시작] 때 비워짐)
+  //   manualChecked       — 사용자가 직접 넣고 ✓ 표시한 것
   const q = await getSyncQueue();
-  const doneSet = new Set(q.doneKeys ?? []);
-  const targets = rows.filter((r) => r.kind === "jira-only" && r.jira && !doneSet.has(r.key));
-  if (targets.length === 0) { showSnackbar("새로 등록할 'Jira만' 행이 없습니다.", { kind: "warn" }); return; }
+  const picked = await getApiSelected();
+  const blocked = new Set([
+    ...(q.doneKeys ?? []),
+    ...(await getApiCreated()),
+    ...(await getManualChecked()),
+  ]);
+  const targets = rows.filter((r) =>
+    r.kind === "jira-only" && r.jira && !blocked.has(r.key) && picked.has(r.key));
+  if (targets.length === 0) {
+    showSnackbar("등록할 항목을 체크하세요. (체크박스는 'Jira만' 행에만 있습니다)", { kind: "warn" });
+    return;
+  }
 
   const groupLabel = (groupSel.selectedOptions[0]?.textContent ?? "").trim();
-  if (!confirm(`'Jira만' ${targets.length}건을 TeamGantt에 API로 생성합니다.\n그룹: ${groupLabel}\n\n진행할까요?`)) return;
+  // 미리보기에 날짜를 함께 보여준다 — 시작=종료=업데이트일이 의도대로 들어가는지
+  // 누르기 전에 확인할 수 있어야 한다(등록 후에는 되돌리기 어렵다).
+  const preview = targets.slice(0, 5).map((r) => {
+    const p = jiraIssueToTgCreatePayload(r.jira, { projectId: 0, parentGroupId: 0 });
+    return `· ${p.start_date}  ${r.key} ${r.jira.summary ?? ""}`.slice(0, 66);
+  }).join("\n");
+  const more = targets.length > 5 ? `\n… 외 ${targets.length - 5}건` : "";
+  if (!confirm(
+    `체크한 ${targets.length}건을 TeamGantt에 생성합니다.\n그룹: ${groupLabel}\n\n${preview}${more}\n\n진행할까요?`
+  )) return;
 
   const t = await resolveTgToken();
   if (t.error) { snackbarForTokenError(t); return; }
@@ -701,13 +907,17 @@ async function createMissingViaApi() {
   const btn = $("btn-tg-api-create");
   btn.disabled = true; btn.classList.add("is-loading");
   let created = 0, failed = 0, assignFail = 0;
+  const createdKeys = [];
   try {
     for (const r of targets) {
       const payload = jiraIssueToTgCreatePayload(r.jira, { projectId, parentGroupId });
       const res = await createTask(payload, t.auth);
       if (!res.ok) { failed++; continue; }
       created++;
-      q.doneKeys.push(r.key);
+      createdKeys.push(r.key);
+      // 성공은 건마다 즉시 커밋한다. finally에서 한 번에 쓰면 등록 도중 패널이 닫히거나
+      // 사이드패널이 재시작될 때 이미 만들어진 것들의 이력이 통째로 사라져 중복 생성된다.
+      await addApiCreated([r.key]);
       // 담당자 자동 할당(내 ID 있을 때만, 베스트에포트). 안 하면 '내 작업' 필터에서 빠져 계속 누락처럼 보임.
       if (myId && res.task?.id) {
         const a = await assignResource(res.task.id, myId, "company", t.auth);
@@ -715,29 +925,162 @@ async function createMissingViaApi() {
       }
       // 비교 표의 해당 행 TG 셀을 '✓ 등록 완료'로 표시(전체 재렌더 없이).
       const tr = document.querySelector(`#compare-table tr[data-jira-only-key="${cssEscape(r.key)}"]`);
-      const tdT = tr?.children[3];
+      const tdT = tr?.querySelector(".col-tg");
       if (tdT) renderTgCellForJiraOnly(tdT, { key: r.key, jira: { summary: r.jira.summary } }, false);
     }
   } finally {
     btn.disabled = false; btn.classList.remove("is-loading");
-    await setSyncQueue(q);
+    if (createdKeys.length) {
+      // 등록 루프가 도는 동안 단축키가 큐를 바꿨을 수 있다. 함수 시작 때 읽은 q를 그대로
+      // 저장하면 이미 소비된 항목이 되살아나 같은 이슈가 또 주입된다 → 최신 큐를 다시 읽어 병합.
+      const fresh = await getSyncQueue();
+      const madeSet = new Set(createdKeys);
+      // API로 이미 만든 항목이 대기 큐에 남아 있으면 단축키가 중복 주입한다.
+      fresh.items = (fresh.items ?? []).filter((it) => !madeSet.has(it.key));
+      if (fresh.pendingKey && madeSet.has(fresh.pendingKey)) fresh.pendingKey = null;
+      await setSyncQueue(fresh);
+    }
+    // 성공한 건 선택 해제. 스냅샷(picked)을 덮어쓰지 않고 최신 값 위에서 지운다 —
+    // 등록 중에 사용자가 새로 체크한 항목이 날아가지 않게.
+    if (createdKeys.length) {
+      await updateApiSelected((set) => { for (const k of createdKeys) set.delete(k); });
+    }
+    await renderCompare();
+    await refreshSyncUi();
+    // 결과 요약은 finally 안에서 띄운다. 밖에 두면 루프 중 예외가 나는 순간 건너뛰어져
+    // "몇 건이 실제로 생성됐는지" 알 수 없게 되고, 그대로 다시 누르면 중복 생성 위험이 커진다.
+    showSnackbar(
+      `API 등록: 생성 ${created} / 실패 ${failed}${assignFail ? ` · 담당자할당실패 ${assignFail}` : ""}. ` +
+      "반영하려면 TeamGantt 탭에서 [API 직통] 수집을 다시 누르세요.",
+      { kind: failed ? "warn" : "ok", duration: 8000 }
+    );
   }
-  showSnackbar(
-    `API 등록: 생성 ${created} / 실패 ${failed}${assignFail ? ` · 담당자할당실패 ${assignFail}` : ""}. ` +
-    "반영하려면 TeamGantt 탭에서 [TeamGantt 수집]을 다시 누르세요.",
-    { kind: failed ? "warn" : "ok", duration: 8000 }
-  );
 }
 
 export async function refreshCompareTab() {
   await renderCompare();
   await renderHotkeyBadge();
+  // 그룹 목록은 화면을 막지 않게 뒤에서 채운다(await 하지 않음).
+  // 실패해도 조용하므로 표시가 늦어질 뿐 흐름에 영향이 없다.
+  autoLoadGroupsQuietly();
 }
 
 export async function initCompareTab() {
   const s = await getSettings();
   $("prefix-regex").value = s.prefixRegex ?? "";
   $("compare-date-source").value = s.compareDateSource ?? "jiraUpdated";
+  syncModeTabUi(s.compareMode ?? "manual");
+
+  // 하위 모드 전환: 수동 동기화 ↔ 그룹에 일괄 등록.
+  $("compare-mode-tabs").addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-cmode]");
+    if (!btn) return;
+    await setSettings({ compareMode: btn.dataset.cmode });
+    syncModeTabUi(btn.dataset.cmode);
+    await renderCompare();
+    // 버튼 라벨(동기화 시작/중지/완료)이 현재 큐 상태와 어긋난 채 다시 노출되지 않게.
+    await refreshSyncUi();
+  });
+
+  // 체크박스는 행마다 새로 그려지므로 이벤트 위임으로 받는다.
+  // 연타하면 read-modify-write가 겹쳐 앞선 클릭이 유실되므로 updateApiSelected로 직렬화한다.
+  $("compare-table").addEventListener("change", async (e) => {
+    const cb = e.target.closest(".api-pick");
+    if (!cb) return;
+    const { key } = cb.dataset;
+    const on = cb.checked;
+    await updateApiSelected((set) => { if (on) set.add(key); else set.delete(key); });
+    refreshApiPickUi();
+  });
+
+  // ── 마우스 드래그로 여러 행 한꺼번에 선택/해제 ──
+  // 체크박스 칸을 누른 채 위/아래로 훑으면 지나간 행이 모두 같은 상태가 된다.
+  // 방향은 '누른 행의 반대 상태'로 고정한다(해제된 행에서 시작하면 쭉 체크, 그 반대도 동일).
+  // mousedown에서 preventDefault를 하므로 브라우저 기본 토글과 텍스트 선택이 일어나지 않고,
+  // checked를 직접 넣기 때문에 change 이벤트도 안 뜬다 → 위 change 핸들러와 겹치지 않는다.
+  let dragOn = null;              // 드래그 중 적용할 상태 (null이면 드래그 아님)
+  let dragTouched = new Set();
+
+  const pickInCell = (target) => {
+    const cell = target.closest?.("td.col-check");
+    return cell ? cell.querySelector(".api-pick:not(:disabled)") : null;
+  };
+  const paint = (cb) => {
+    if (!cb || dragTouched.has(cb.dataset.key)) return;
+    dragTouched.add(cb.dataset.key);
+    cb.checked = dragOn;
+  };
+
+  $("compare-table").addEventListener("mousedown", (e) => {
+    if (e.button !== 0 || e.shiftKey) return;   // 좌클릭만, Shift는 범위 선택에 양보
+    const cb = pickInCell(e.target);
+    if (!cb) return;
+    dragOn = !cb.checked;
+    dragTouched = new Set();
+    paint(cb);
+    e.preventDefault();
+  });
+
+  // 드래그 중 지나가는 행을 칠한다. 셀 안이면 어디든(체크박스를 정확히 안 지나도) 잡힌다.
+  $("compare-table").addEventListener("mouseover", (e) => {
+    if (dragOn === null) return;
+    paint(pickInCell(e.target));
+  });
+
+  // 표 밖에서 손을 떼도 끝나야 하므로 document에 붙인다. 저장은 여기서 한 번만.
+  document.addEventListener("mouseup", async () => {
+    if (dragOn === null) return;
+    const on = dragOn;
+    const keys = [...dragTouched];
+    dragOn = null;
+    dragTouched = new Set();
+    if (!keys.length) return;
+    await updateApiSelected((set) => {
+      for (const k of keys) { if (on) set.add(k); else set.delete(k); }
+    });
+    refreshApiPickUi();
+  });
+
+  // Shift+클릭 = 직전에 클릭한 체크박스부터 여기까지 한꺼번에 선택/해제.
+  // change 이벤트에는 shiftKey가 실리지 않아 click으로 받는다(click이 change보다 먼저 오고,
+  // 이 시점에 cb.checked는 이미 토글된 값이다). 단일 클릭은 위 change 핸들러가 처리하므로
+  // 여기서는 범위일 때만 저장한다 — Set의 add/delete라 겹쳐도 결과는 같다.
+  let lastPickIdx = null;
+  $("compare-table").addEventListener("click", async (e) => {
+    const cb = e.target.closest(".api-pick");
+    if (!cb || cb.disabled) return;
+    const boxes = [...document.querySelectorAll("#compare-table .api-pick:not(:disabled)")];
+    const idx = boxes.indexOf(cb);
+    if (idx < 0) return;
+
+    if (e.shiftKey && lastPickIdx != null && lastPickIdx !== idx) {
+      const on = cb.checked;
+      const [from, to] = idx < lastPickIdx ? [idx, lastPickIdx] : [lastPickIdx, idx];
+      const keys = [];
+      for (let i = from; i <= to; i++) {
+        boxes[i].checked = on;
+        keys.push(boxes[i].dataset.key);
+      }
+      await updateApiSelected((set) => {
+        for (const k of keys) { if (on) set.add(k); else set.delete(k); }
+      });
+      refreshApiPickUi();
+    }
+    lastPickIdx = idx;
+  });
+
+  // 전체선택은 '지금 화면에 보이는(필터 적용된) 등록 가능한 행'만 대상으로 한다.
+  // 숨겨진 행까지 잡으면 확인창 건수와 화면이 어긋나 사고가 난다.
+  $("compare-check-all").addEventListener("change", async () => {
+    const on = $("compare-check-all").checked;
+    const boxes = [...document.querySelectorAll("#compare-table .api-pick:not(:disabled)")];
+    const keys = boxes.map((b) => b.dataset.key);
+    for (const b of boxes) b.checked = on;
+    await updateApiSelected((set) => {
+      for (const k of keys) { if (on) set.add(k); else set.delete(k); }
+    });
+    refreshApiPickUi();
+  });
 
   $("btn-open-prefix-mgr").addEventListener("click", async () => {
     const cur = await getSettings();
@@ -767,6 +1110,35 @@ export async function initCompareTab() {
   $("btn-tg-api-create").addEventListener("click", createMissingViaApi);
   $("tg-api-group-select").addEventListener("change", async () => {
     await setSettings({ tgCreateGroupId: $("tg-api-group-select").value });
+    refreshApiPickUi();   // 그룹을 고르면 강조가 [등록]으로 넘어가야 한다
+    refreshFavButton();
+  });
+
+  // ☆/★ 토글. 선택한 그룹을 즐겨찾기에 넣거나 뺀다.
+  // 목록 순서가 바뀌므로 다시 채우되, 방금 고른 그룹은 선택 상태를 유지한다.
+  $("btn-tg-api-fav").addEventListener("click", async () => {
+    const sel = $("tg-api-group-select");
+    const id = sel.value;
+    if (!id) {
+      showSnackbar("먼저 즐겨찾기할 그룹을 선택하세요.", { kind: "error" });
+      return;
+    }
+    const cur = await getSettings();
+    const favs = new Set((cur.favoriteGroupIds ?? []).map(String));
+    const nowFav = !favs.has(String(id));
+    if (nowFav) favs.add(String(id));
+    else        favs.delete(String(id));
+    await setSettings({ favoriteGroupIds: [...favs] });
+    favCache = favs;
+    // 이미 받아둔 목록만 재배치한다 — 별 하나 누를 때마다 API를 다시 부를 이유가 없다.
+    const labels = [...sel.querySelectorAll("option")].filter((o) => o.value);
+    const known = labels.map((o) => ({
+      id: Number(o.value),
+      name: o.textContent.replace(/^★\s*/, ""),
+      path: [],
+    }));
+    await fillGroupSelect(known, id);
+    showSnackbar(nowFav ? "즐겨찾기에 넣었습니다 — 목록 맨 위에 고정됩니다." : "즐겨찾기에서 뺐습니다.", { kind: "ok" });
   });
   wireDialogClose("detect-result-dialog");
 
