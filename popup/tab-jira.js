@@ -217,7 +217,7 @@ async function handleCollectJiraFetch() {
   const ageMin = Math.round((Date.now() - newest) / 60000);
   const result = await upsertJiraIssues(issues);
   showSnackbar(
-    `Jira 수집(API): 신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped} · 누적 ${result.total} (캡처 ${ageMin}분 전, ${pages.length}개 응답 합침)`,
+    `신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped} · 가로채기 ${pages.length}개 응답 (캡처 ${ageMin}분 전)`,
     { kind: "ok", duration: 5000 }
   );
   await renderJiraTable();
@@ -247,7 +247,7 @@ async function handleCollectJira() {
   }
   const result = await upsertJiraIssues(issues);
   showSnackbar(
-    `Jira 수집: 신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped} · 누적 ${result.total} (이번 화면 ${visibleCount}${totalText ? `, ${totalText}` : ""})`,
+    `신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped} · DOM 화면 ${visibleCount}건${totalText ? ` (${totalText})` : ""}`,
     { kind: "ok", duration: 5000 }
   );
   await renderJiraTable();
@@ -267,10 +267,11 @@ async function handleCollectJiraRest() {
     });
     return;
   }
-  const maxResults = Number(s.jiraPageSize) || 100;
+  // 수집은 전량(cap 미지정 = 무제한, 브리지의 MAX_PAGES가 안전장치).
+  // 화면 테이블의 [페이지당](jiraPageSize)은 표시 단위일 뿐이라 수집 상한으로 넘기지 않는다.
   let resp;
   try {
-    resp = await chrome.tabs.sendMessage(tab.id, { type: "COLLECT_JIRA_REST", jql: s.jqlTemplate, maxResults });
+    resp = await chrome.tabs.sendMessage(tab.id, { type: "COLLECT_JIRA_REST", jql: s.jqlTemplate });
   } catch (e) {
     showSnackbar("Jira 페이지와 연결이 끊겼습니다. 그 탭을 새로고침(F5) 후 다시 시도해주세요.", { kind: "error", duration: 7000 });
     return;
@@ -284,10 +285,18 @@ async function handleCollectJiraRest() {
     showSnackbar(`REST 응답 0건 (${resp.endpoint}). JQL이 빈 결과이거나 권한 문제일 수 있습니다.`, { kind: "error", duration: 7000 });
     return;
   }
-  const result = await upsertJiraIssues(issues);
+  // REST 직통은 요청한 fields를 API가 전부 채워주는 완전한 스냅샷이라, 빈 값도 그대로 반영한다.
+  const result = await upsertJiraIssues(issues, { trustEmpty: true });
+  // 몇 페이지를 돌았는지는 남긴다 — 1페이지에서 끝났을 때 그게 전량인지 상한에 걸린 건지
+  // 구분할 단서가 이것뿐이다.
+  const { pages, truncated, stoppedBy } = resp.data;
+  const pageInfo = Number.isFinite(pages) ? ` (${pages}p)` : "";
+  // 정식 경로(POST /search/jql)는 조용히, 구형 GET으로 떨어졌을 때만 표시한다.
+  const fallback = resp.endpoint?.startsWith("GET") ? " · GET 폴백" : "";
   showSnackbar(
-    `Jira 수집(REST·${resp.endpoint}): 신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped} · 누적 ${result.total}`,
-    { kind: "ok", duration: 5000 }
+    `신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped} · ${issues.length}건 수신${pageInfo}${fallback}`
+      + (truncated ? ` ⚠ 전량 아님 (${stoppedBy ?? "중단됨"})` : ""),
+    { kind: truncated ? "error" : "ok", duration: truncated ? 9000 : 5000 }
   );
   await renderJiraTable();
 }
