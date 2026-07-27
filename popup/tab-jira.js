@@ -1,6 +1,6 @@
 import {
   getAll, getSettings, setSettings, upsertJiraIssues, defaultJql, clearJiraIssues,
-  getJiraFetchCache, normalizeJiraFromFetch,
+  getJiraFetchCache, normalizeJiraFromFetch, normalizeJiraFromRest,
 } from "../lib/storage.js";
 import { checkJiraUrl } from "../lib/selectors.js";
 import { showSnackbar } from "./snackbar.js";
@@ -253,6 +253,45 @@ async function handleCollectJira() {
   await renderJiraTable();
 }
 
+// 실험: 동일 출처 REST 수집. atlassian.net 탭의 콘텐트 스크립트가 쿠키 세션으로
+// /rest/api/3/search/jql 을 직접 호출 → 검색버튼 꼼수 없이, GraphQL 이름 변경에도 안 깨짐.
+async function handleCollectJiraRest() {
+  const s = await getSettings();
+  if (!s.jqlTemplate) { showSnackbar("JQL을 먼저 입력하세요.", { kind: "error" }); return; }
+  // REST는 동일 출처 콘텐트 스크립트에서만 쿠키가 실리므로, 아무 Jira 탭이나 열려 있으면 된다.
+  let [tab] = await chrome.tabs.query({ url: "https://*.atlassian.net/*", active: true, currentWindow: true });
+  if (!tab) [tab] = await chrome.tabs.query({ url: "https://*.atlassian.net/*" });
+  if (!tab) {
+    showSnackbar("Jira 탭이 없습니다. 아무 Jira 페이지나 열어주세요.", {
+      kind: "error", actionLabel: "Jira 열기", onAction: handleOpenJira, duration: 8000,
+    });
+    return;
+  }
+  const maxResults = Number(s.jiraPageSize) || 100;
+  let resp;
+  try {
+    resp = await chrome.tabs.sendMessage(tab.id, { type: "COLLECT_JIRA_REST", jql: s.jqlTemplate, maxResults });
+  } catch (e) {
+    showSnackbar("Jira 페이지와 연결이 끊겼습니다. 그 탭을 새로고침(F5) 후 다시 시도해주세요.", { kind: "error", duration: 7000 });
+    return;
+  }
+  if (!resp?.ok) {
+    showSnackbar(`REST 수집 실패: ${resp?.error ?? "알 수 없음"}`, { kind: "error", duration: 8000 });
+    return;
+  }
+  const issues = normalizeJiraFromRest(resp.data);
+  if (issues.length === 0) {
+    showSnackbar(`REST 응답 0건 (${resp.endpoint}). JQL이 빈 결과이거나 권한 문제일 수 있습니다.`, { kind: "error", duration: 7000 });
+    return;
+  }
+  const result = await upsertJiraIssues(issues);
+  showSnackbar(
+    `Jira 수집(REST·${resp.endpoint}): 신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped} · 누적 ${result.total}`,
+    { kind: "ok", duration: 5000 }
+  );
+  await renderJiraTable();
+}
+
 // Jira 날짜 포맷(ISO / 한국어)을 "YYYY-MM-DD HH:mm"으로 통일.
 function toReadableDate(s) {
   if (!s) return "";
@@ -418,6 +457,7 @@ export async function initJiraTab() {
 
   $("btn-collect-jira").addEventListener("click", handleCollectJira);
   $("btn-collect-jira-fetch").addEventListener("click", handleCollectJiraFetch);
+  $("btn-collect-jira-rest").addEventListener("click", handleCollectJiraRest);
 
   $("jira-page-size").value = String(s.jiraPageSize ?? 100);
   $("jira-page-size").addEventListener("change", async () => {

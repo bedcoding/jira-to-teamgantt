@@ -4,6 +4,8 @@ import {
   getManualChecked, setManualChecked,
 } from "../lib/storage.js";
 import { showSnackbar } from "./snackbar.js";
+import { resolveTgToken, listGroupsFlat, createTask, assignResource } from "../lib/teamgantt-api.js";
+import { jiraIssueToTgCreatePayload } from "../lib/jira-to-tg.js";
 
 function $(id) { return document.getElementById(id); }
 
@@ -308,6 +310,10 @@ async function renderCompare() {
   if (jiraOnly > 0) syncBar.classList.remove("hidden");
   else              syncBar.classList.add("hidden");
 
+  // API 등록 바도 '누락분이 있을 때'만 노출(동기화 바와 동일 조건).
+  const apiBar = $("tg-api-bar");
+  if (apiBar) apiBar.classList.toggle("hidden", jiraOnly === 0);
+
   renderKindChips(settings.syncIncludeKinds ?? [], { matched, unmatched: jiraOnly + orphanK + orphanNK });
   await renderStatusChips(jiraIssues, settings.syncIncludeStatuses ?? []);
 
@@ -603,6 +609,126 @@ function wireDialogClose(id) {
   dlg.addEventListener("click", (e) => { if (e.target === dlg) closeDialog(id); });
 }
 
+// ── 실험: 누락분 TeamGantt API 직접 등록 (이식 1·5·3번) ───────────────────────
+// 단축키 반자동(입력창 주입)과 별개로, 가로챈 TeamGantt 토큰으로 api.teamgantt.com 에
+// task를 직접 POST 한다. 그룹(parent_group_id)을 골라 넣고, 내 ID가 있으면 담당자도 자동 할당.
+
+function snackbarForTokenError(t) {
+  if (t.error === "no-tab") {
+    showSnackbar("TeamGantt 탭이 없습니다. 프로젝트 페이지를 먼저 여세요.", {
+      kind: "error", actionLabel: "TeamGantt 열기",
+      onAction: () => chrome.tabs.create({ url: "https://app.teamgantt.com/" }), duration: 8000,
+    });
+  } else if (t.error === "no-content-script") {
+    showSnackbar("TeamGantt 페이지와 연결이 끊겼습니다. 그 탭을 새로고침(F5) 후 다시 시도하세요.", {
+      kind: "error", actionLabel: "새로고침", onAction: () => t.tab && chrome.tabs.reload(t.tab.id), duration: 8000,
+    });
+  } else {
+    showSnackbar("인증 토큰을 아직 못 잡았습니다. TeamGantt 탭을 새로고침하면 토큰이 잡힙니다.", {
+      kind: "error", actionLabel: "새로고침", onAction: () => t.tab && chrome.tabs.reload(t.tab.id), duration: 8000,
+    });
+  }
+}
+
+// 설정된 프로젝트의 그룹을 불러와 select 채움. 마지막 선택(tgCreateGroupId) 복원.
+async function loadGroupsForCreate() {
+  const { settings } = await getAll();
+  if (!settings.tgProjectId) { showSnackbar("간트 탭에서 프로젝트를 먼저 선택하세요.", { kind: "error" }); return; }
+  const t = await resolveTgToken();
+  if (t.error) { snackbarForTokenError(t); return; }
+
+  const btn = $("btn-tg-api-load-groups");
+  btn.disabled = true; btn.classList.add("is-loading");
+  try {
+    const res = await listGroupsFlat(Number(settings.tgProjectId), t.auth);
+    if (!res.ok) {
+      showSnackbar(`${res.error}. 토큰 만료면 TeamGantt 탭을 새로고침하세요.`, { kind: "error", duration: 7000 });
+      return;
+    }
+    const sel = $("tg-api-group-select");
+    const prev = settings.tgCreateGroupId ? String(settings.tgCreateGroupId) : sel.value;
+    sel.replaceChildren();
+    const ph = document.createElement("option");
+    ph.value = ""; ph.textContent = "그룹 선택…";
+    sel.appendChild(ph);
+    for (const g of res.groups) {
+      const o = document.createElement("option");
+      o.value = String(g.id);
+      o.textContent = `${"  ".repeat(g.depth)}${g.name}`;
+      sel.appendChild(o);
+    }
+    if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+    showSnackbar(`그룹 ${res.groups.length}개 불러옴 — 넣을 그룹을 고르세요.`, { kind: "ok", duration: 4000 });
+  } finally {
+    btn.disabled = false; btn.classList.remove("is-loading");
+  }
+}
+
+async function createMissingViaApi() {
+  const groupSel = $("tg-api-group-select");
+  const parentGroupId = Number(groupSel.value);
+  if (!parentGroupId) { showSnackbar("먼저 [그룹 불러오기] 후 넣을 그룹을 선택하세요.", { kind: "warn" }); return; }
+
+  const { jiraIssues, tgTasks, settings } = await getAll();
+  if (!settings.tgProjectId) { showSnackbar("간트 탭에서 프로젝트를 먼저 선택하세요.", { kind: "error" }); return; }
+
+  // 현재 필터가 적용된 'Jira만' 행 = 누락분 (startSync와 동일한 행 계산).
+  const tgByKey = {};
+  const tgWithoutKey = [];
+  for (const task of Object.values(tgTasks)) {
+    if (task.jiraKey) tgByKey[task.jiraKey] = task;
+    else tgWithoutKey.push(task);
+  }
+  let rows = classifyRows(jiraIssues, tgByKey, tgWithoutKey);
+  rows = applySearch(rows, $("compare-search").value.trim());
+  rows = applyStatusFilter(rows, settings.syncIncludeStatuses ?? []);
+  rows = applyKindFilter(rows, settings.syncIncludeKinds ?? []);
+
+  // 이미 등록 완료(doneKeys)된 키는 제외 → 두 번 눌러도 중복 생성 안 함.
+  const q = await getSyncQueue();
+  const doneSet = new Set(q.doneKeys ?? []);
+  const targets = rows.filter((r) => r.kind === "jira-only" && r.jira && !doneSet.has(r.key));
+  if (targets.length === 0) { showSnackbar("새로 등록할 'Jira만' 행이 없습니다.", { kind: "warn" }); return; }
+
+  const groupLabel = (groupSel.selectedOptions[0]?.textContent ?? "").trim();
+  if (!confirm(`'Jira만' ${targets.length}건을 TeamGantt에 API로 생성합니다.\n그룹: ${groupLabel}\n\n진행할까요?`)) return;
+
+  const t = await resolveTgToken();
+  if (t.error) { snackbarForTokenError(t); return; }
+
+  const projectId = Number(settings.tgProjectId);
+  const myId = settings.tgMyId ? Number(settings.tgMyId) : null;
+  const btn = $("btn-tg-api-create");
+  btn.disabled = true; btn.classList.add("is-loading");
+  let created = 0, failed = 0, assignFail = 0;
+  try {
+    for (const r of targets) {
+      const payload = jiraIssueToTgCreatePayload(r.jira, { projectId, parentGroupId });
+      const res = await createTask(payload, t.auth);
+      if (!res.ok) { failed++; continue; }
+      created++;
+      q.doneKeys.push(r.key);
+      // 담당자 자동 할당(내 ID 있을 때만, 베스트에포트). 안 하면 '내 작업' 필터에서 빠져 계속 누락처럼 보임.
+      if (myId && res.task?.id) {
+        const a = await assignResource(res.task.id, myId, "company", t.auth);
+        if (!a.ok) assignFail++;
+      }
+      // 비교 표의 해당 행 TG 셀을 '✓ 등록 완료'로 표시(전체 재렌더 없이).
+      const tr = document.querySelector(`#compare-table tr[data-jira-only-key="${cssEscape(r.key)}"]`);
+      const tdT = tr?.children[3];
+      if (tdT) renderTgCellForJiraOnly(tdT, { key: r.key, jira: { summary: r.jira.summary } }, false);
+    }
+  } finally {
+    btn.disabled = false; btn.classList.remove("is-loading");
+    await setSyncQueue(q);
+  }
+  showSnackbar(
+    `API 등록: 생성 ${created} / 실패 ${failed}${assignFail ? ` · 담당자할당실패 ${assignFail}` : ""}. ` +
+    "반영하려면 TeamGantt 탭에서 [TeamGantt 수집]을 다시 누르세요.",
+    { kind: failed ? "warn" : "ok", duration: 8000 }
+  );
+}
+
 export async function refreshCompareTab() {
   await renderCompare();
   await renderHotkeyBadge();
@@ -636,6 +762,12 @@ export async function initCompareTab() {
   $("btn-sync-stop").addEventListener("click", stopSync);
   $("btn-sync-detect").addEventListener("click", detectTaskInput);
   $("btn-sync-skip").addEventListener("click", skipNext);
+
+  $("btn-tg-api-load-groups").addEventListener("click", loadGroupsForCreate);
+  $("btn-tg-api-create").addEventListener("click", createMissingViaApi);
+  $("tg-api-group-select").addEventListener("change", async () => {
+    await setSettings({ tgCreateGroupId: $("tg-api-group-select").value });
+  });
   wireDialogClose("detect-result-dialog");
 
   // 종류 칩 토글: 클릭 시 includeKinds 갱신.
