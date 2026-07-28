@@ -197,14 +197,17 @@ function renderRow(r, dateSource, doneKeys, pendingKey, confirmedKeys, manualChe
     cb.type = "checkbox";
     cb.className = "api-pick";
     cb.dataset.key = r.key;
+    // .tip(= cursor: help)은 붙이지 않는다. 여기는 누르는 칸이라 물음표 커서가 어울리지
+    // 않는다. 툴팁 본체는 전역 [data-tip] 규칙이 처리하므로 data-tip만 있으면 뜬다.
     if (blocked?.has(r.key)) {
       cb.disabled = true;
-      tdC.classList.add("tip");
       tdC.setAttribute("data-tip", manualChecked?.has(r.key)
         ? "수동 ✓ 표시된 항목 — 이미 처리한 것으로 봅니다"
         : "이미 등록된 항목입니다");
     } else {
       cb.checked = apiSelected?.has(r.key) ?? false;
+      // 드래그 안내는 표 위 고정 안내(#compare-pick-hint)가 맡는다. 칸마다 툴팁을 달면
+      // 드래그 중 마우스를 따라다니며 떴다 사라져 오히려 방해가 된다.
     }
     tdC.appendChild(cb);
   }
@@ -993,13 +996,43 @@ export async function initCompareTab() {
     refreshApiPickUi();
   });
 
+  // 선택 방법 안내: 체크 칸에 마우스를 올린 동안에만 화면 상단 중앙에 띄운다.
+  // 셀마다 붙이면 드래그 중 마우스를 따라다니고, 상시 노출하면 자리를 계속 차지한다.
+  const pickHint = $("compare-pick-hint");
+  const showPickHint = (on) => {
+    if (!pickHint) return;
+    if (on) {
+      // 표(체크 칸) 바로 위에 붙인다. 멀리 띄우면 마우스는 표 왼쪽 끝에 있는데
+      // 안내는 화면 위쪽에 떠서 시선이 왕복하고, 결국 못 보고 지나친다.
+      const table = $("compare-table");
+      const r = table.getBoundingClientRect();
+      const h = pickHint.offsetHeight || 24;
+      // 표가 위로 스크롤돼 헤더가 화면 밖이면 최소한 화면 안(탭 바 아래)에는 남긴다.
+      pickHint.style.top = `${Math.max(50, r.top - h - 6)}px`;
+      pickHint.style.left = `${Math.max(8, r.left)}px`;
+    }
+    pickHint.classList.toggle("visible", on);
+  };
+  $("compare-table").addEventListener("mouseover", (e) => {
+    if (document.body.classList.contains("dragging")) { showPickHint(false); return; }
+    const inCheckCol = Boolean(e.target.closest?.("td.col-check, th.col-check"));
+    showPickHint(inCheckCol && $("compare-table").classList.contains("show-check"));
+  });
+  $("compare-table").addEventListener("mouseleave", () => showPickHint(false));
+
   // ── 마우스 드래그로 여러 행 한꺼번에 선택/해제 ──
   // 체크박스 칸을 누른 채 위/아래로 훑으면 지나간 행이 모두 같은 상태가 된다.
   // 방향은 '누른 행의 반대 상태'로 고정한다(해제된 행에서 시작하면 쭉 체크, 그 반대도 동일).
-  // mousedown에서 preventDefault를 하므로 브라우저 기본 토글과 텍스트 선택이 일어나지 않고,
-  // checked를 직접 넣기 때문에 change 이벤트도 안 뜬다 → 위 change 핸들러와 겹치지 않는다.
+  //
+  // 시작 칸 처리가 까다롭다. 브라우저가 체크박스를 토글하는 시점은 mousedown이 아니라
+  // click이고, click은 '누른 곳과 뗀 곳이 같을 때만' 그 요소에 온다:
+  //   · 제자리 클릭 → click 옴   → 브라우저가 토글, change 핸들러가 저장 (여기선 손대지 않음)
+  //   · 드래그      → click 없음 → 아무도 토글하지 않으므로 여기서 직접 칠해야 한다
+  // 그래서 다른 칸으로 넘어가 '드래그가 확정된 순간' 시작 칸을 직접 칠한다.
   let dragOn = null;              // 드래그 중 적용할 상태 (null이면 드래그 아님)
   let dragTouched = new Set();
+  let dragStartCb = null;         // 처음 누른 체크박스
+  let dragExtended = false;       // 시작 칸 밖으로 나갔는가(= 진짜 드래그인가)
 
   const pickInCell = (target) => {
     const cell = target.closest?.("td.col-check");
@@ -1015,16 +1048,30 @@ export async function initCompareTab() {
     if (e.button !== 0 || e.shiftKey) return;   // 좌클릭만, Shift는 범위 선택에 양보
     const cb = pickInCell(e.target);
     if (!cb) return;
-    dragOn = !cb.checked;
-    dragTouched = new Set();
-    paint(cb);
-    e.preventDefault();
+    // preventDefault로 기본 토글을 막으려 하면 안 된다. 토글은 click 단계라 막히지 않고,
+    // 여기서 켜둔 것을 click이 도로 꺼버린다(단일 클릭이 켜졌다 바로 꺼지던 원인).
+    dragOn = !cb.checked;                      // click 이후의 최종 상태와 같은 값
+    dragStartCb = cb;
+    dragExtended = false;
+    dragTouched = new Set([cb.dataset.key]);
+    // dragging: 텍스트 선택 방지 + 지나가는 칸의 툴팁 억제(CSS에서 처리)
+    document.body.classList.add("dragging");
+    document.body.style.userSelect = "none";
+    showPickHint(false);
   });
 
   // 드래그 중 지나가는 행을 칠한다. 셀 안이면 어디든(체크박스를 정확히 안 지나도) 잡힌다.
   $("compare-table").addEventListener("mouseover", (e) => {
     if (dragOn === null) return;
-    paint(pickInCell(e.target));
+    const cb = pickInCell(e.target);
+    if (!cb) return;
+    if (!dragExtended && cb !== dragStartCb) {
+      // 다른 칸으로 넘어왔다 = 드래그 확정. 이제 시작 칸에는 click이 오지 않으므로
+      // 직접 칠해준다(안 하면 출발한 칸만 선택에서 빠진다).
+      dragExtended = true;
+      if (dragStartCb) dragStartCb.checked = dragOn;
+    }
+    paint(cb);
   });
 
   // 표 밖에서 손을 떼도 끝나야 하므로 document에 붙인다. 저장은 여기서 한 번만.
@@ -1032,9 +1079,16 @@ export async function initCompareTab() {
     if (dragOn === null) return;
     const on = dragOn;
     const keys = [...dragTouched];
+    const extended = dragExtended;
     dragOn = null;
+    dragStartCb = null;
+    dragExtended = false;
     dragTouched = new Set();
-    if (!keys.length) return;
+    document.body.classList.remove("dragging");
+    document.body.style.userSelect = "";
+    showPickHint(false);
+    // 제자리 클릭이면 브라우저 토글 + change 핸들러가 처리한다. 여기서 또 쓰지 않는다.
+    if (!extended) return;
     await updateApiSelected((set) => {
       for (const k of keys) { if (on) set.add(k); else set.delete(k); }
     });

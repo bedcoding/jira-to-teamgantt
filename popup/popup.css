@@ -752,6 +752,50 @@ h3 {
 #compare-table:not(.show-check) .col-check { display: none; }
 #compare-table .api-pick,
 #compare-table #compare-check-all { margin: 0; cursor: pointer; }
+/* 체크 칸은 '누르는 곳'이다. 툴팁(data-tip)이 붙어 있어도 물음표 커서가 되지 않게,
+   체크박스 밖 여백까지 포인터로 통일한다(드래그 시작 지점이기도 하다). */
+#compare-table td.col-check { cursor: pointer; }
+#compare-table td.col-check:has(.api-pick:disabled) { cursor: default; }
+
+/* 선택 방법 안내 — 화면 상단 중앙에 떠 있는 플로팅. 레이아웃 공간을 차지하지 않고,
+   체크 칸에 마우스를 올린 동안에만 보인다. 셀마다 툴팁을 달면 드래그 중 마우스를
+   따라다녀 시야를 가리므로 위치를 한 곳에 고정했다. */
+.pick-hint {
+  /* 표 바로 위, 체크 칸 쪽에 뜬다. 위치는 JS가 표의 실제 좌표를 재서 잡는다
+     (화면 상단 중앙은 필터 카드 때문에 체크박스에서 멀어 시선이 왕복한다).
+     top/left는 JS가 덮어쓰므로 여기 값은 계산 전 초기값일 뿐이다. */
+  position: fixed;
+  top: 50px;
+  left: 12px;
+  transform: translateY(-4px);
+  z-index: 60;
+  padding: 5px 12px;
+  max-width: calc(100% - 24px);
+  background: #263246;           /* 불투명 — 무엇 위에 겹쳐도 읽히게 */
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;          /* 마우스를 가로채지 않게 */
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.pick-hint.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.pick-hint b { font-weight: 600; color: #ffd479; }
+
+/* 드래그하는 동안에는 툴팁을 전부 억제한다. 지나가는 칸마다 말풍선이 떴다 사라지면
+   무엇을 고르고 있는지 보이지 않는다. */
+body.dragging [data-tip]:not([data-tip=""])::after { display: none !important; }
 
 #compare-table .col-key {
   width: 90px;

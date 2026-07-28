@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jira to TeamGantt",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Jira와 TeamGantt의 내 작업을 나란히 비교해 누락을 찾고, 빠진 작업을 원하는 그룹에 한 번에 등록합니다.",
   "permissions": ["storage", "unlimitedStorage", "tabs", "activeTab", "scripting", "downloads", "sidePanel"],
   "host_permissions": [
