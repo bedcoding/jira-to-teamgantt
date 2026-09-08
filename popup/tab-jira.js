@@ -1,5 +1,6 @@
 import {
   getAll, getSettings, setSettings, upsertJiraIssues, defaultJql, clearJiraIssues,
+  removeJiraIssues, restoreJiraIssues,
   getJiraFetchCache, normalizeJiraFromFetch, normalizeJiraFromRest,
 } from "../lib/storage.js";
 import { checkJiraUrl } from "../lib/selectors.js";
@@ -293,10 +294,39 @@ async function handleCollectJiraRest() {
   const pageInfo = Number.isFinite(pages) ? ` (${pages}p)` : "";
   // 정식 경로(POST /search/jql)는 조용히, 구형 GET으로 떨어졌을 때만 표시한다.
   const fallback = resp.endpoint?.startsWith("GET") ? " · GET 폴백" : "";
+
+  // 사라진 이슈 정리. 잘린 응답(truncated)으로 정리하면 '아직 못 받은' 이슈가
+  // '삭제된' 이슈로 오인돼 지워진다 — 전량을 받았을 때만 켠다.
+  let pruned = [];
+  if (!truncated) {
+    const range = extractDatesFromJql(s.jqlTemplate);
+    const stale = await findStaleIssues(issues, range);
+    const ok = stale.length === 0 || stale.length <= PRUNE_CONFIRM_THRESHOLD || confirm(
+      `JQL 범위(${range.start} ~ ${range.end}) 안에 있는데 이번 결과에 없는 이슈 ${stale.length}건을 목록에서 지울까요?\n\n`
+      + stale.slice(0, 10).join(", ") + (stale.length > 10 ? ` … 외 ${stale.length - 10}건` : "")
+      + `\n\nJQL의 날짜 외 조건(담당자, 프로젝트 등)을 바꿨다면 [취소]하세요.`
+    );
+    if (ok && stale.length) pruned = await removeJiraIssues(stale);
+  }
+  const pruneInfo = pruned.length ? ` / 정리 ${pruned.length}` : "";
+
   showSnackbar(
-    `신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped} · ${issues.length}건 수신${pageInfo}${fallback}`
+    `신규 ${result.added} / 갱신 ${result.updated} / 동일 ${result.skipped}${pruneInfo} · ${issues.length}건 수신${pageInfo}${fallback}`
       + (truncated ? ` ⚠ 전량 아님 (${stoppedBy ?? "중단됨"})` : ""),
-    { kind: truncated ? "error" : "ok", duration: truncated ? 9000 : 5000 }
+    {
+      kind: truncated ? "error" : "ok",
+      duration: (truncated || pruned.length) ? 9000 : 5000,
+      // 정리가 일어났으면 되돌릴 길을 같이 준다. 자동으로 지운 것이라 사용자가
+      // 의도한 삭제가 아닐 수 있다.
+      ...(pruned.length ? {
+        actionLabel: "정리 되돌리기",
+        onAction: async () => {
+          await restoreJiraIssues(pruned);
+          await renderJiraTable();
+          showSnackbar(`정리한 ${pruned.length}건 되돌림.`, { kind: "ok" });
+        },
+      } : {}),
+    }
   );
   await renderJiraTable();
 }
@@ -327,6 +357,56 @@ function toReadableDate(s) {
   return s;
 }
 
+// 정상적으로 사라지는 이슈는 한두 건이다. 수십 건이 잡히면 JQL의 날짜 외 조건이
+// 지난 수집과 달라진 경우(예: 담당자/프로젝트 필터 교체)일 가능성이 높아 확인을 받는다.
+const PRUNE_CONFIRM_THRESHOLD = 5;
+
+// JQL 날짜 범위 안에 있는데 이번 응답에는 없던 로컬 이슈 키를 골라낸다.
+// TG쪽 upsertTgTasks의 prune과 같은 취지지만, 범위를 projectId가 아니라 JQL의
+// updated 구간으로 잡는다 — 지라 탭은 범위를 바꿔가며 여러 번 수집해 누적하는
+// 구조라(‹지난주/이번주/다음주› 버튼이 그 전제), 범위 밖까지 정리하면 작년 것처럼
+// 이번 수집이 커버하지 않는 데이터가 통째로 날아간다.
+// 한계 두 가지는 감당 가능한 선에서 남겨둔다:
+//   - 날짜 외 조건이 지난 수집과 달라졌으면 여전히 오탐한다. 그건 '정리 대상이
+//     비정상적으로 많다'로 드러나므로 호출부에서 확인을 받아 막는다.
+//   - 로컬 updated는 수집 당시 값이고, 타임존 경계에서 하루 어긋날 수 있다.
+//     잘못 지워져도 [되돌리기]가 있고, 해당 범위로 다시 수집하면 돌아온다.
+async function findStaleIssues(incoming, range) {
+  if (!range.start || !range.end) return [];  // 날짜 조건 없는 JQL — 범위를 모르니 손대지 않는다
+  const seen = new Set(incoming.map((it) => it.key));
+  const { jiraIssues } = await getAll();
+  const stale = [];
+  for (const [key, rec] of Object.entries(jiraIssues)) {
+    if (seen.has(key)) continue;
+    const d = toReadableDate(rec.updated).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;         // updated를 못 읽은 건은 제외
+    if (d < range.start || d >= range.end) continue;        // 범위 밖 = 이번 수집 대상이 아님
+    stale.push(key);
+  }
+  return stale;
+}
+
+// 한 건 삭제. 확인창 대신 스낵바 [되돌리기]를 준다 — 1건이라 확인창은 번거롭고,
+// 원본 레코드를 그대로 들고 있으니 실수는 복구할 수 있다.
+async function handleDeleteRow(key) {
+  const removed = await removeJiraIssues([key]);
+  if (removed.length === 0) {
+    showSnackbar(`${key}은 이미 목록에 없습니다.`, { kind: "error" });
+    return;
+  }
+  await renderJiraTable();
+  showSnackbar(`${key} 삭제됨. 다시 수집하면 되돌아옵니다.`, {
+    kind: "ok",
+    duration: 8000,
+    actionLabel: "되돌리기",
+    onAction: async () => {
+      await restoreJiraIssues(removed);
+      await renderJiraTable();
+      showSnackbar(`${key} 되돌림.`, { kind: "ok" });
+    },
+  });
+}
+
 async function renderJiraTable() {
   const { jiraIssues, settings } = await getAll();
   const tbody = document.querySelector("#jira-table tbody");
@@ -339,7 +419,16 @@ async function renderJiraTable() {
   for (const it of slice) {
     const tr = document.createElement("tr");
     const c = (t) => { const td = document.createElement("td"); td.textContent = t ?? ""; return td; };
-    tr.append(c(it.key), c(it.summary), c(it.status), c(it.assignee), c(toReadableDate(it.updated)));
+    // 삭제 대상 키는 행에 심어둔다 — 위임 핸들러가 버튼에서 행으로 거슬러 올라가 읽는다.
+    tr.dataset.key = it.key;
+    const delCell = document.createElement("td");
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "row-del";
+    delBtn.textContent = "\u00d7";
+    delBtn.dataset.tip = `${it.key} 삭제 (이 목록에서만)`;
+    delCell.appendChild(delBtn);
+    tr.append(c(it.key), c(it.summary), c(it.status), c(it.assignee), c(toReadableDate(it.updated)), delCell);
     tbody.appendChild(tr);
   }
   $("jira-status").textContent = `누적 ${total}건`;
@@ -482,6 +571,15 @@ export async function initJiraTab() {
     jiraPage = 1;
     showSnackbar("Jira 이슈 전체 삭제됨.", { kind: "ok" });
     await renderJiraTable();
+  });
+
+  // 행 삭제는 tbody 이벤트 위임으로 한 번만 등록한다. [페이지당]이 최대 1000행까지
+  // 그릴 수 있어, 행마다 리스너를 붙이면 렌더할 때마다 그만큼 다시 생긴다.
+  document.querySelector("#jira-table tbody").addEventListener("click", (e) => {
+    const btn = e.target.closest(".row-del");
+    if (!btn) return;
+    const key = btn.closest("tr")?.dataset.key;
+    if (key) handleDeleteRow(key);
   });
 
   $("jira-final-url").addEventListener("click", () => {
