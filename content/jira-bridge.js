@@ -55,7 +55,10 @@ async function fetchJsonSameOrigin(url, init) {
 const PER_PAGE = 100;
 const MAX_PAGES = 50; // 안전장치. 100 x 50 = 최대 5000건
 
-async function collectJiraViaRest({ jql, cap: capIn }) {
+// fields는 호출부가 고를 수 있다(에픽 탭은 상위와 이슈 유형이 필요하다).
+// 응답에 실제로 쓴 fields를 함께 돌려준다.
+// 확장을 고친 뒤 Jira 탭을 새로고침하지 않으면 예전 스크립트가 fields 지정을 무시하는데, 호출부는 이 값으로 그걸 알아챈다.
+async function collectJiraViaRest({ jql, cap: capIn, fields = REST_FIELDS }) {
   const cap = Number.isFinite(capIn) && capIn > 0 ? capIn : Infinity;
   const origin = location.origin;
   const headers = { "Content-Type": "application/json", "Accept": "application/json" };
@@ -66,7 +69,7 @@ async function collectJiraViaRest({ jql, cap: capIn }) {
   let firstStatus = null;
   let pages = 0;
   while (pages < MAX_PAGES && issues.length < cap) {
-    const body = { jql, maxResults: Math.min(PER_PAGE, cap - issues.length), fields: REST_FIELDS };
+    const body = { jql, maxResults: Math.min(PER_PAGE, cap - issues.length), fields };
     if (nextPageToken) body.nextPageToken = nextPageToken;
     let r;
     try {
@@ -82,7 +85,7 @@ async function collectJiraViaRest({ jql, cap: capIn }) {
     issues.push(...(r.json.issues ?? []));
     // 마지막 페이지 → 전량 수집 완료.
     if (r.json.isLast || !r.json.nextPageToken) {
-      return { ok: true, endpoint: "POST /search/jql", data: { issues, pages, truncated: false } };
+      return { ok: true, endpoint: "POST /search/jql", data: { issues, pages, truncated: false, fields } };
     }
     nextPageToken = r.json.nextPageToken;
   }
@@ -94,7 +97,7 @@ async function collectJiraViaRest({ jql, cap: capIn }) {
       ok: true,
       endpoint: "POST /search/jql",
       data: {
-        issues, pages, truncated: true,
+        issues, pages, truncated: true, fields,
         stoppedBy: firstStatus == null ? `상한 ${pages}페이지 도달` : `HTTP/네트워크 오류 ${firstStatus}`,
       },
     };
@@ -105,7 +108,7 @@ async function collectJiraViaRest({ jql, cap: capIn }) {
     // cap이 Infinity면 URL에 그대로 박히므로 반드시 유한값으로 자른다.
     // 구형 GET은 startAt 페이지네이션이 따로 필요해서 여기서는 1페이지만 가져온다(폴백 경로).
     const url = `${origin}/rest/api/3/search?jql=${encodeURIComponent(jql)}`
-      + `&maxResults=${Math.min(cap, PER_PAGE)}&fields=${encodeURIComponent(REST_FIELDS.join(","))}`;
+      + `&maxResults=${Math.min(cap, PER_PAGE)}&fields=${encodeURIComponent(fields.join(","))}`;
     const r = await fetchJsonSameOrigin(url, { credentials: "include", headers: { "Accept": "application/json" } });
     if (!r.ok) return { ok: false, error: `REST 수집 실패 (POST ${firstStatus} / GET HTTP ${r.status})` };
     const got = r.json.issues ?? [];
@@ -113,7 +116,7 @@ async function collectJiraViaRest({ jql, cap: capIn }) {
     return {
       ok: true,
       endpoint: "GET /search",
-      data: { issues: got, pages: 1, truncated: Number.isFinite(totalKnown) && got.length < totalKnown },
+      data: { issues: got, pages: 1, truncated: Number.isFinite(totalKnown) && got.length < totalKnown, fields },
     };
   } catch (e2) {
     return { ok: false, error: `REST 수집 실패 (POST ${firstStatus} / GET network:${String(e2?.message ?? e2)})` };
@@ -122,7 +125,8 @@ async function collectJiraViaRest({ jql, cap: capIn }) {
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type !== "COLLECT_JIRA_REST") return false;
-  collectJiraViaRest({ jql: msg.jql, cap: msg.cap })
+  const fields = Array.isArray(msg.fields) && msg.fields.length ? msg.fields : undefined;
+  collectJiraViaRest({ jql: msg.jql, cap: msg.cap, fields })
     .then((r) => sendResponse(r))
     .catch((e) => sendResponse({ ok: false, error: String(e?.message ?? e) }));
   return true; // async sendResponse

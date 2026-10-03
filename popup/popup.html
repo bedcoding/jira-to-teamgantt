@@ -12,6 +12,11 @@
   <link rel="modulepreload" href="tab-tg.js" />
   <link rel="modulepreload" href="tab-compare.js" />
   <link rel="modulepreload" href="tab-report.js" />
+  <link rel="modulepreload" href="tab-epic.js" />
+  <link rel="modulepreload" href="tab-epic-history.js" />
+  <link rel="modulepreload" href="epic-jira.js" />
+  <link rel="modulepreload" href="epic-write.js" />
+  <link rel="modulepreload" href="epic-report.js" />
   <link rel="modulepreload" href="backup.js" />
   <link rel="modulepreload" href="snackbar.js" />
   <link rel="modulepreload" href="pager.js" />
@@ -19,6 +24,7 @@
   <link rel="modulepreload" href="../lib/selectors.js" />
   <link rel="modulepreload" href="../lib/teamgantt-api.js" />
   <link rel="modulepreload" href="../lib/jira-to-tg.js" />
+  <link rel="modulepreload" href="../lib/epic-link.js" />
 </head>
 <body>
   <nav class="tabs">
@@ -26,6 +32,7 @@
     <button class="tab-btn" data-tab="tg">간트</button>
     <button class="tab-btn" data-tab="compare">비교</button>
     <button class="tab-btn" data-tab="report">추출</button>
+    <button class="tab-btn" data-tab="epic">에픽</button>
     <div class="tabs-tools">
       <button id="btn-global-backup-save" class="icon-btn" data-tip="현재 데이터 백업">💾</button>
       <button id="btn-global-backup-load" class="icon-btn" data-tip="백업 파일 불러오기">📂</button>
@@ -299,6 +306,122 @@
     <textarea id="report-output" readonly></textarea>
   </section>
 
+  <!-- ────────── 에픽 ────────── -->
+  <section class="tab-panel" data-tab="epic">
+    <div class="modal-tabs" id="epic-mode-tabs" role="tablist">
+      <button type="button" class="modal-tab active" data-emode="link">에픽에 연결</button>
+      <button type="button" class="modal-tab" data-emode="history">변경 기록 <span id="epic-history-badge" class="epic-badge hidden" title="지금 적용 중인 변경 수"></span></button>
+    </div>
+
+    <div id="epic-link-view">
+      <div class="filter-card">
+        <div class="form-grid">
+          <label for="epic-find-jql">에픽</label>
+          <input type="text" id="epic-find-jql" placeholder='issuetype = Epic AND summary ~ "TASKS"' />
+
+          <label for="epic-target-jql">대상</label>
+          <input type="text" id="epic-target-jql" placeholder="assignee = currentUser() AND resolutiondate >= &quot;2026-01-01&quot;" />
+        </div>
+
+        <div class="card-actions">
+          <button id="btn-epic-load" class="primary" data-tip="에픽 JQL로 월별 에픽 후보를, 대상 JQL로 연결할 이슈를 가져옵니다">불러오기</button>
+          <button id="btn-epic-stop" class="hidden" data-tip="아직 보내지 않은 요청을 취소합니다. 이미 바뀐 이슈는 그대로입니다">중지</button>
+          <span id="epic-status" class="status inline"></span>
+        </div>
+      </div>
+
+      <details id="epic-month-box" class="epic-box hidden" open>
+        <summary id="epic-month-title">월별 에픽</summary>
+        <p class="panel-hint">이슈는 해결한 달의 에픽에 들어가고, 미해결 이슈는 이번 달로 잡힙니다. 한 달의 에픽을 고르면 제목 형식이 같은 에픽으로 나머지 달이 채워집니다.</p>
+        <div id="epic-month-map" class="epic-month-map"></div>
+      </details>
+
+      <div id="epic-search-row" class="epic-search-row hidden">
+        <input type="search" id="epic-search" placeholder="키, 제목, 상위 에픽으로 걸러보기" />
+      </div>
+
+      <details id="epic-sec-link" class="epic-box hidden" open>
+        <summary>상위 없는 이슈 <span id="epic-link-count" class="epic-sec-count"></span></summary>
+        <div class="epic-sec-bar">
+          <span class="epic-sec-desc">어느 에픽에도 속하지 않은 이슈입니다. 체크한 이슈를 그 달 에픽 아래로 넣습니다.</span>
+          <button id="btn-epic-run-link" class="primary">체크한 항목 연결</button>
+        </div>
+        <table id="epic-table-link" class="epic-table">
+          <thead>
+            <tr>
+              <th class="col-check"><input type="checkbox" id="epic-check-all" title="보이는 이슈 전체 선택/해제" /></th>
+              <th class="col-key">키</th>
+              <th>제목</th>
+              <th class="col-date">해결일</th>
+              <th class="col-note">상태</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </details>
+
+      <details id="epic-sec-move" class="epic-box hidden" open>
+        <summary>다른 에픽에 있는 이슈 <span id="epic-move-count" class="epic-sec-count"></span></summary>
+        <div class="epic-sec-bar">
+          <span class="epic-sec-desc">옮기면 원래 에픽에서 빠집니다. 기본으로는 아무것도 체크돼 있지 않고, 직접 체크한 이슈만 옮깁니다.</span>
+          <button id="btn-epic-run-move">체크한 항목 옮기기</button>
+        </div>
+        <table id="epic-table-move" class="epic-table">
+          <thead>
+            <tr>
+              <th class="col-check"></th>
+              <th class="col-key">키</th>
+              <th>제목</th>
+              <th class="col-date">해결일</th>
+              <th class="col-note">옮길 곳</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </details>
+
+      <details id="epic-sec-skip" class="epic-box hidden">
+        <summary>건드리지 않는 이슈 <span id="epic-skip-count" class="epic-sec-count"></span></summary>
+        <table id="epic-table-skip" class="epic-table">
+          <thead>
+            <tr>
+              <th class="col-key">키</th>
+              <th>제목</th>
+              <th class="col-date">해결일</th>
+              <th class="col-note">상위</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </details>
+
+      <div id="epic-empty" class="empty-note epic-empty">[불러오기]를 누르면 월별 에픽 후보와 연결할 이슈를 가져옵니다. 아무 Jira 탭이나 열려 있으면 됩니다.</div>
+    </div>
+
+    <div id="epic-history-view" class="hidden">
+      <div class="filter-card">
+        <div class="form-grid">
+          <label for="epic-history-search">검색</label>
+          <input type="search" id="epic-history-search" placeholder="키, 제목, 에픽으로 걸러보기" />
+        </div>
+        <div class="card-actions">
+          <button id="btn-epic-history-report" class="primary" data-tip="지금 에픽에 들어가 있는 것을 에픽별 건수로 정리한 보고용 글을 띄웁니다. 아무것도 바꾸지 않습니다">추가 내역</button>
+          <button id="btn-epic-history-revert-report" data-tip="취소한 것을 에픽별 건수와 이슈 목록으로 정리한 보고용 글을 띄웁니다. 아무것도 바꾸지 않습니다">취소 내역</button>
+          <button id="btn-epic-history-reconcile" data-tip="기록을 Jira의 지금 상태와 대조해서 고쳐 적습니다. Jira는 바꾸지 않습니다. 취소가 Jira에 반영되지 않은 건은 다시 적용 중으로 돌아옵니다">Jira 대조</button>
+          <button id="btn-epic-history-stop" class="hidden" data-tip="아직 보내지 않은 요청을 취소합니다. 이미 돌린 이슈는 그대로입니다">중지</button>
+          <span id="epic-history-status" class="status inline"></span>
+          <span class="epic-erase-group">
+            <button id="btn-epic-history-prune" data-tip="'취소함' 행들을 이 목록에서 지웁니다. 지우면 취소 내역에도 나오지 않습니다. Jira는 바뀌지 않습니다">취소분 삭제</button>
+            <button id="btn-epic-history-clear" class="danger" data-tip="기록을 모두 지웁니다. 지우면 그 변경은 여기서 취소할 수 없습니다. Jira는 바뀌지 않습니다">전체 삭제</button>
+          </span>
+        </div>
+      </div>
+      <p class="panel-hint epic-history-hint">취소하면 그 이슈의 상위를 바꾸기 전으로 돌립니다. 그 사이 누군가 상위를 다시 바꾼 이슈는 건드리지 않습니다. 검색으로 걸러 두면 묶음이나 에픽 단위 취소도 보이는 것에만 적용됩니다.</p>
+      <div id="epic-history-list"></div>
+      <div id="epic-history-empty" class="empty-note epic-empty">아직 변경 기록이 없습니다. 에픽에 연결하거나 옮기면 여기에 쌓입니다.</div>
+    </div>
+  </section>
+
   <!-- 사용자 목록 관리 모달 -->
   <div id="person-mgr-dialog" class="bp-backdrop hidden">
     <div class="bp-dialog" role="dialog" aria-modal="true">
@@ -502,6 +625,25 @@
       </div>
       <div class="bp-footer">
         <button class="bp-cancel" data-close="detect-result-dialog">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 에픽 보고용 내역 -->
+  <div id="epic-report-dialog" class="bp-backdrop hidden">
+    <div class="bp-dialog" role="dialog" aria-modal="true" aria-labelledby="epic-report-title">
+      <div class="bp-header">
+        <span id="epic-report-title">에픽별 내역</span>
+        <button class="bp-close" aria-label="닫기" data-close="epic-report-dialog">×</button>
+      </div>
+      <div class="bp-body">
+        <p id="epic-report-lead" class="panel-hint"></p>
+        <textarea id="epic-report-text" rows="12" readonly></textarea>
+      </div>
+      <div class="bp-footer">
+        <button id="btn-epic-report-history" class="hidden">변경 기록 보기</button>
+        <button class="bp-cancel" data-close="epic-report-dialog">닫기</button>
+        <button id="btn-epic-report-copy" class="primary">복사</button>
       </div>
     </div>
   </div>

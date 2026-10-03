@@ -1,6 +1,6 @@
 # 개인정보처리방침 — Jira to TeamGantt
 
-**최종 업데이트: 2026-05-29**
+**최종 업데이트: 2026-10-01**
 
 이 문서는 Chrome 확장 프로그램 **Jira to TeamGantt**(이하 "본 확장")의
 개인정보 처리 방침을 설명합니다.
@@ -14,10 +14,14 @@
 
 - 사용자가 로그인한 Atlassian Jira 페이지에서 노출되는 이슈 정보
   (키, 제목, 상태, 담당자, 업데이트 시각, 만든 날짜, 마감일, 우선순위, 라벨)
+- 에픽 탭을 쓸 때 읽는 Jira 이슈 정보
+  (상위 항목(에픽)의 키와 제목, 이슈 유형, 해결일)
 - 사용자가 로그인한 TeamGantt 페이지에서 노출되는 작업 정보
   (작업 ID, 제목, 시작일, 종료일, 진행률, 담당자, 프로젝트 ID)
 - 사용자가 본 확장 UI에서 직접 입력한 설정 값
   (Jira 도메인, JQL, 정규식, 프로젝트/사용자 목록, 단축키 등)
+- 에픽 탭에서 상위 항목을 바꾼 기록
+  (이슈 키와 제목, 바꾸기 전과 후의 상위 항목 키와 제목, 취소한 시각, 사용자가 지울 때까지 보관)
 
 ## 2. 저장 위치
 
@@ -29,8 +33,10 @@
 본 확장은 사용자의 정보를 다음 외에는 어떠한 외부 서버로도 전송하지 않습니다.
 
 - **Atlassian Jira** (`https://*.atlassian.net`):
-  사용자가 정상적으로 로그인한 상태에서 Jira 페이지를 열 때, 본 확장이 그 페이지 안의
-  공개된 DOM을 읽습니다. 별도 API 호출이나 데이터 업로드는 없습니다.
+  사용자가 로그인해 둔 Jira 세션으로 Jira 공식 REST API를 호출합니다.
+  이슈 검색(읽기)을 보내고, 에픽 탭에서 사용자가 확인창을 통과해 실행한 경우에만 이슈의 상위 항목(에픽) 변경(쓰기)을 보냅니다.
+  요청은 사용자의 Jira 사이트로만 가며 다른 서버를 거치지 않습니다.
+  Jira 페이지의 DOM이나 Jira가 직접 요청한 응답을 읽는 수집 방식도 함께 제공합니다.
 - **TeamGantt** (`https://app.teamgantt.com`, `https://api.teamgantt.com`):
   사용자가 TeamGantt 페이지를 열고 TeamGantt가 직접 요청한 응답을 사용자 브라우저
   안에서 가로채 캐시합니다. 본 확장이 TeamGantt에 추가 요청을 보내지 않습니다.
@@ -41,7 +47,7 @@
 
 - `storage`, `unlimitedStorage`: 수집한 데이터/설정을 사용자 로컬에 저장
 - `tabs`, `activeTab`: 현재 활성 탭이 Jira/TeamGantt 인지 판별하고 메시지 전달
-- `scripting`: content script 주입
+- `scripting`: content script 주입, 에픽 탭의 상위 항목 변경 코드를 열어 둔 Jira 탭에서 실행
 - `downloads`: 사용자가 저장한 데이터를 백업 파일(JSON)로 내보낼 때 사용
 - `sidePanel`: 사이드 패널 UI 표시
 - `https://*.atlassian.net/*`, `https://app.teamgantt.com/*`, `https://api.teamgantt.com/*`:

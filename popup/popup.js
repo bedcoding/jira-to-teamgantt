@@ -2,6 +2,7 @@ import { initJiraTab } from "./tab-jira.js";
 import { initTgTab } from "./tab-tg.js";
 import { initCompareTab, refreshCompareTab } from "./tab-compare.js";
 import { initReportTab } from "./tab-report.js";
+import { initEpicTab } from "./tab-epic.js";
 import { saveBackup, loadBackup } from "./backup.js";
 import { getSettings, setSettings } from "../lib/storage.js";
 
@@ -80,4 +81,5 @@ document.addEventListener("DOMContentLoaded", async () => {
   await initJiraTab();
   await initTgTab();
   await initCompareTab();
+  await initEpicTab();
 });

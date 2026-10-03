@@ -1,4 +1,4 @@
-import { exportAll, importAll, getAll } from "../lib/storage.js";
+import { exportAll, importAll, getAll, getEpicRuns, countEpicChanges } from "../lib/storage.js";
 import { showSnackbar } from "./snackbar.js";
 
 function stamp() {
@@ -36,6 +36,11 @@ async function buildPreview(data) {
     diffLine("TeamGantt 작업", Object.keys(current.tgTasks).length, Object.keys(tgNext).length),
     diffLine("사람 목록", current.settings.tgPeople?.length ?? 0, peopleNext.length),
     diffLine("프로젝트 목록", current.settings.tgProjects?.length ?? 0, projectsNext.length),
+    // 복원하면 에픽 변경 기록도 백업 시점으로 바뀐다.
+    // 그 뒤에 바꾼 이슈는 변경 기록에서 취소할 수 없게 되므로 건수를 같이 보여 준다.
+    diffLine("에픽 변경 기록",
+      (await getEpicRuns()).reduce((n, r) => n + r.items.length, 0),
+      countEpicChanges(data)),
   ];
 
   const jiraSample = Object.values(jiraNext)

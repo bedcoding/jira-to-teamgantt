@@ -1619,3 +1619,130 @@ input[type="text"][readonly]:hover {
   margin-left: 6px;
 }
 
+
+/* ── 에픽 탭 ───────────────────── */
+
+/* 이 탭은 숨김 처리를 탭 단위로 한 번에 정의한다. */
+.tab-panel[data-tab="epic"] .hidden { display: none; }
+
+/* 월별 에픽과 세 영역은 접을 수 있는 흰 상자로 나눈다. */
+.epic-box {
+  background: #fff;
+  border: 1px solid #d8dce1;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+.epic-box > summary {
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+  cursor: pointer;
+  user-select: none;
+}
+.epic-box[open] > summary { border-bottom: 1px solid #eaecef; }
+.epic-sec-count { margin-left: 6px; font-weight: 400; color: #777; }
+.epic-box .panel-hint { margin: 10px 14px 4px; }
+
+.epic-month-map {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 8px 14px 12px;
+}
+.epic-month-label { color: #444; font-variant-numeric: tabular-nums; }
+.epic-month-map select {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  border-color: #d4d6d9;
+  border-radius: 4px;
+  background: #fff;
+}
+/* 아직 에픽을 고르지 않은 달은 노랗게 칠해 눈에 띄게 한다. */
+.epic-month-map select.needs-pick { border-color: #e0a800; background: #fffbea; }
+.epic-month-count { color: #888; font-size: 11px; white-space: nowrap; }
+
+.epic-search-row { margin: 0 0 12px; }
+.epic-search-row input { width: 100%; height: 30px; }
+
+.epic-sec-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+}
+.epic-sec-desc { flex: 1 1 auto; color: #666; font-size: 11px; line-height: 1.5; }
+.epic-sec-bar > button { flex: 0 0 auto; white-space: nowrap; }
+
+/* 표는 상자 안에 들어가므로 표 자체의 테두리와 그림자는 뺀다. */
+.epic-table { border: none; border-radius: 0; box-shadow: none; border-top: 1px solid #eaecef; }
+.epic-table td { vertical-align: middle; }
+.epic-table .col-check {
+  width: 28px;
+  text-align: center;
+  padding-left: 2px;
+  padding-right: 2px;
+  user-select: none;
+}
+.epic-table .col-key { width: 92px; text-align: center; }
+.epic-table .col-date { width: 84px; text-align: center; white-space: nowrap; }
+.epic-table .col-note { width: 160px; }
+.epic-table input[type="checkbox"] { margin: 0; cursor: pointer; }
+.epic-table input[type="checkbox"]:disabled { cursor: default; }
+.epic-table tr.epic-group td { background: #f4f6f8; color: #333; font-weight: 600; }
+.epic-table tr.epic-none td { padding: 16px; text-align: center; color: #999; }
+.epic-table tr.is-off td { color: #a0a4a8; }
+.epic-table tr.is-fail td.col-note { color: #c00; }
+.epic-table tr.is-done td.col-note { color: #1b7a3a; }
+
+/* 비교 탭의 빈 안내는 표 바로 밑에 붙지만, 여기서는 혼자 서는 상자다. */
+.epic-empty { display: block; border-top: 1px solid #d8dce1; border-radius: 8px; margin-top: 0; }
+
+/* 에픽 탭 맨 위의 하위 탭(에픽에 연결, 변경 기록). */
+#epic-mode-tabs { margin-top: 0; }
+.epic-badge {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: #e3f2fd;
+  color: #1565c0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.epic-history-hint { margin: 0 2px 12px; }
+.epic-history-table .col-from { width: 170px; }
+.epic-history-table .col-act { width: 96px; text-align: center; white-space: nowrap; }
+.epic-act { padding: 2px 8px; font-size: 11px; }
+.epic-sec-bar > .epic-act { padding: 5px 10px; font-size: 12px; }
+/* 취소하지 못한 사유는 제목 아래 작게 붙인다. */
+.epic-note { margin-top: 2px; color: #b26a00; font-size: 10px; }
+
+/* 보고용 정리 창은 탭 밖(body 바로 아래)에 있어서 숨김 처리를 따로 둔다. */
+#epic-report-dialog .hidden { display: none; }
+#epic-report-text {
+  width: 100%;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.epic-sec-bar > .btn-report-run { padding: 5px 10px; font-size: 12px; }
+.epic-month-open { height: 28px; padding: 0 8px; font-size: 11px; white-space: nowrap; }
+/* 기록을 지우는 버튼 둘은 한 묶음으로 오른쪽에 모아서, 보고용 글을 띄우는 버튼과 섞이지 않게 한다. */
+/* 묶음으로 감싸야 폭이 좁아 줄이 바뀔 때도 둘이 같이 움직인다. */
+.epic-erase-group { display: inline-flex; gap: 10px; margin-left: auto; }
+.epic-erase-group > button { white-space: nowrap; }
+/* 지우기 버튼은 줄 오른쪽 끝에 붙어서, 툴팁을 버튼 오른쪽 끝에 맞춰 왼쪽으로 펼친다. */
+/* 기본처럼 왼쪽 끝에서 오른쪽으로 펼치면 사이드패널 밖으로 잘린다. */
+.epic-erase-group [data-tip]:not([data-tip=""])::after {
+  left: auto;
+  right: 0;
+}
