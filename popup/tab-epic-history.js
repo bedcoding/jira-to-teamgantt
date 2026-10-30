@@ -184,7 +184,8 @@ function itemRow(run, it) {
   const from = el("td", "col-from", it.from ? `${it.from} ${it.fromSummary ?? ""}` : "없음");
   const act = el("td", "col-act");
   if (isActive(it)) act.appendChild(actionButton("btn-revert-item", "취소", { run: run.id, key: it.key }));
-  else act.textContent = `취소함 ${fmtTime(it.revertedAt)}`;
+  // 취소한 시각까지 한 줄에 쓰면 칸을 넘쳐서 잘리므로 두 줄로 나눠 쓴다.
+  else act.append(el("div", null, "취소함"), el("div", null, fmtTime(it.revertedAt)));
   tr.append(key, title, from, act);
   return tr;
 }
