@@ -20,3 +20,6 @@ WIKI_DRAFT.md
 
 # Chrome Web Store 업로드용 패키지 (git 추적 안 함)
 *.zip
+
+# 스토어 스크린샷 (scripts/shots/capture.mjs가 만든다)
+store-screenshots/
